@@ -6,7 +6,7 @@
     <title>Hello Codex</title>
     <style>
       :root {
-        color-scheme: light;
+        color-scheme: light dark;
         --bg-1: #eef2ff;
         --bg-2: #f8fafc;
         --card: #ffffff;
@@ -18,7 +18,30 @@
         --danger: #dc2626;
         --danger-hover: #b91c1c;
         --border: #dbeafe;
+        --stats-bg: #f8fbff;
+        --stats-border: #bfdbfe;
+        --stats-text: #1e3a8a;
+        --result-text: #0b9b66;
       }
+
+      :root[data-theme='dark'] {
+        --bg-1: #0f172a;
+        --bg-2: #020617;
+        --card: #111827;
+        --text-main: #e2e8f0;
+        --text-subtle: #cbd5e1;
+        --primary: #3b82f6;
+        --primary-hover: #2563eb;
+        --primary-active: #1d4ed8;
+        --danger: #ef4444;
+        --danger-hover: #dc2626;
+        --border: #334155;
+        --stats-bg: #172554;
+        --stats-border: #1d4ed8;
+        --stats-text: #bfdbfe;
+        --result-text: #34d399;
+      }
+
 
       * {
         box-sizing: border-box;
@@ -62,14 +85,14 @@
         margin-top: 20px;
         padding: 14px 16px;
         border-radius: 12px;
-        background: #f8fbff;
-        border: 1px dashed #bfdbfe;
+        background: var(--stats-bg);
+        border: 1px dashed var(--stats-border);
       }
 
       .stats p {
         margin: 0;
         font-size: 0.95rem;
-        color: #1e3a8a;
+        color: var(--stats-text);
       }
 
       .stats strong {
@@ -92,6 +115,18 @@
         font-weight: 600;
         cursor: pointer;
         transition: transform 0.15s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+      }
+
+
+      #theme-toggle-btn {
+        margin-left: auto;
+        background: transparent;
+        color: var(--text-main);
+        border: 1px solid var(--border);
+      }
+
+      #theme-toggle-btn:hover {
+        background: rgba(148, 163, 184, 0.12);
       }
 
       #check-btn {
@@ -123,7 +158,7 @@
         margin-top: 14px;
         min-height: 24px;
         font-weight: 600;
-        color: #0b9b66;
+        color: var(--result-text);
       }
 
       @media (max-width: 480px) {
@@ -150,6 +185,7 @@
       <div class="actions">
         <button id="check-btn" type="button">点击 +1</button>
         <button id="reset-btn" type="button">重置计数</button>
+        <button id="theme-toggle-btn" type="button" aria-label="切换深色模式" aria-pressed="false">切换到深色模式</button>
       </div>
 
       <p id="result" aria-live="polite"></p>
@@ -161,6 +197,33 @@
       const countText = document.getElementById('count');
       const result = document.getElementById('result');
       const storageKey = 'codex-click-count';
+
+      const themeToggleButton = document.getElementById('theme-toggle-btn');
+      const themeStorageKey = 'theme-preference';
+      const darkTheme = 'dark';
+      const lightTheme = 'light';
+
+      const getPreferredTheme = () => {
+        const storedTheme = localStorage.getItem(themeStorageKey);
+        if (storedTheme === darkTheme || storedTheme === lightTheme) {
+          return storedTheme;
+        }
+
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? darkTheme : lightTheme;
+      };
+
+      const applyTheme = (theme) => {
+        document.documentElement.dataset.theme = theme;
+        const isDark = theme === darkTheme;
+        themeToggleButton.textContent = isDark ? '切换到浅色模式' : '切换到深色模式';
+        themeToggleButton.setAttribute('aria-label', isDark ? '切换到浅色模式' : '切换到深色模式');
+        themeToggleButton.setAttribute('aria-pressed', String(isDark));
+      };
+
+      const saveTheme = (theme) => {
+        localStorage.setItem(themeStorageKey, theme);
+      };
+
 
       const getStoredCount = () => {
         const value = Number.parseInt(localStorage.getItem(storageKey) ?? '0', 10);
@@ -177,6 +240,9 @@
         localStorage.setItem(storageKey, String(clickCount));
       };
 
+      const initialTheme = getPreferredTheme();
+      applyTheme(initialTheme);
+
       renderCount();
 
       button.addEventListener('click', () => {
@@ -184,6 +250,12 @@
         saveCount();
         renderCount();
         result.textContent = 'Codex is working!';
+      });
+
+      themeToggleButton.addEventListener('click', () => {
+        const nextTheme = document.documentElement.dataset.theme === darkTheme ? lightTheme : darkTheme;
+        applyTheme(nextTheme);
+        saveTheme(nextTheme);
       });
 
       resetButton.addEventListener('click', () => {
