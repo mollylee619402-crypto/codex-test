@@ -131,8 +131,8 @@
         <button id="reset-btn" type="button">重置计数</button>
       </div>
 
-      <p id="count" aria-live="polite">已点击：0 次</p>
-      <p id="result" aria-live="polite">点击按钮开始测试。</p>
+      <p id="count" aria-live="polite" aria-atomic="true">已点击：0 次</p>
+      <p id="result" aria-live="polite" aria-atomic="true">点击按钮开始测试。</p>
     </main>
 
     <script>
@@ -155,7 +155,7 @@
         clickCount += 1;
         localStorage.setItem(storageKey, String(clickCount));
         renderCount();
-        result.textContent = `按钮已点击 ${clickCount} 次，功能正常！`; 
+        result.textContent = `按钮已点击 ${clickCount} 次，功能正常！`;
       });
 
       resetButton.addEventListener('click', () => {
