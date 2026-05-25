@@ -7,14 +7,16 @@
     <style>
       :root {
         color-scheme: light;
-        --bg-start: #eef2ff;
-        --bg-end: #f8fafc;
-        --card-bg: #ffffff;
+        --bg-1: #eef2ff;
+        --bg-2: #f8fafc;
+        --card: #ffffff;
         --text-main: #0f172a;
         --text-subtle: #475569;
         --primary: #2563eb;
         --primary-hover: #1d4ed8;
         --primary-active: #1e40af;
+        --danger: #dc2626;
+        --danger-hover: #b91c1c;
         --border: #dbeafe;
       }
 
@@ -29,32 +31,54 @@
         place-items: center;
         padding: 24px;
         font-family: 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-        background: linear-gradient(145deg, var(--bg-start), var(--bg-end));
+        background: radial-gradient(circle at top left, #dbeafe 0%, transparent 45%),
+          radial-gradient(circle at bottom right, #e9d5ff 0%, transparent 40%),
+          linear-gradient(145deg, var(--bg-1), var(--bg-2));
         color: var(--text-main);
       }
 
       .card {
-        width: min(92vw, 520px);
-        background: var(--card-bg);
+        width: min(92vw, 560px);
+        background: var(--card);
         border: 1px solid var(--border);
-        border-radius: 16px;
-        padding: 28px;
-        box-shadow: 0 12px 30px rgba(37, 99, 235, 0.12);
+        border-radius: 18px;
+        padding: 30px;
+        box-shadow: 0 14px 35px rgba(15, 23, 42, 0.12);
       }
 
       h1 {
-        margin: 0 0 10px;
-        font-size: clamp(1.8rem, 2.5vw, 2.1rem);
+        margin: 0;
+        font-size: clamp(1.8rem, 2.8vw, 2.2rem);
+        letter-spacing: 0.2px;
       }
 
-      p {
-        margin: 0;
+      .subtitle {
+        margin-top: 10px;
         line-height: 1.65;
         color: var(--text-subtle);
       }
 
+      .stats {
+        margin-top: 20px;
+        padding: 14px 16px;
+        border-radius: 12px;
+        background: #f8fbff;
+        border: 1px dashed #bfdbfe;
+      }
+
+      .stats p {
+        margin: 0;
+        font-size: 0.95rem;
+        color: #1e3a8a;
+      }
+
+      .stats strong {
+        font-size: 1.3rem;
+        color: #1d4ed8;
+      }
+
       .actions {
-        margin-top: 22px;
+        margin-top: 20px;
         display: flex;
         flex-wrap: wrap;
         gap: 12px;
@@ -73,7 +97,7 @@
       #check-btn {
         background: var(--primary);
         color: #fff;
-        box-shadow: 0 8px 18px rgba(37, 99, 235, 0.28);
+        box-shadow: 0 8px 18px rgba(37, 99, 235, 0.3);
       }
 
       #check-btn:hover {
@@ -87,27 +111,19 @@
       }
 
       #reset-btn {
-        background: #e2e8f0;
-        color: #1e293b;
+        background: var(--danger);
+        color: #fff;
       }
 
       #reset-btn:hover {
-        background: #cbd5e1;
-      }
-
-      #result,
-      #count {
-        margin-top: 14px;
+        background: var(--danger-hover);
       }
 
       #result {
+        margin-top: 14px;
+        min-height: 24px;
+        font-weight: 600;
         color: #0b9b66;
-        font-weight: 600;
-      }
-
-      #count {
-        font-weight: 600;
-        color: var(--text-main);
       }
 
       @media (max-width: 480px) {
@@ -124,14 +140,18 @@
   <body>
     <main class="card">
       <h1>Hello Codex</h1>
-      <p>这是一个更美观的网页示例，用来验证 Codex 是否正常工作。</p>
+      <p class="subtitle">一个更美观的小页面：支持点击计数、持久化保存，以及一键重置。</p>
+
+      <section class="stats" aria-live="polite">
+        <p>当前点击次数</p>
+        <strong id="count">0</strong>
+      </section>
 
       <div class="actions">
-        <button id="check-btn" type="button">点击测试</button>
+        <button id="check-btn" type="button">点击 +1</button>
         <button id="reset-btn" type="button">重置计数</button>
       </div>
 
-      <p id="count" aria-live="polite">已点击：0 次</p>
       <p id="result" aria-live="polite"></p>
     </main>
 
@@ -142,25 +162,33 @@
       const result = document.getElementById('result');
       const storageKey = 'codex-click-count';
 
-      const savedCount = Number.parseInt(localStorage.getItem(storageKey) ?? '0', 10);
-      let clickCount = Number.isNaN(savedCount) ? 0 : savedCount;
+      const getStoredCount = () => {
+        const value = Number.parseInt(localStorage.getItem(storageKey) ?? '0', 10);
+        return Number.isNaN(value) || value < 0 ? 0 : value;
+      };
+
+      let clickCount = getStoredCount();
 
       const renderCount = () => {
-        countText.textContent = `已点击：${clickCount} 次`;
+        countText.textContent = String(clickCount);
+      };
+
+      const saveCount = () => {
+        localStorage.setItem(storageKey, String(clickCount));
       };
 
       renderCount();
 
       button.addEventListener('click', () => {
         clickCount += 1;
-        localStorage.setItem(storageKey, String(clickCount));
+        saveCount();
         renderCount();
         result.textContent = 'Codex is working!';
       });
 
       resetButton.addEventListener('click', () => {
         clickCount = 0;
-        localStorage.setItem(storageKey, '0');
+        saveCount();
         renderCount();
         result.textContent = '计数已重置。';
       });
