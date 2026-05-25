@@ -142,8 +142,24 @@
       const result = document.getElementById('result');
       const storageKey = 'codex-click-count';
 
-      const savedCount = Number.parseInt(localStorage.getItem(storageKey) ?? '0', 10);
-      let clickCount = Number.isNaN(savedCount) ? 0 : savedCount;
+      const readCount = () => {
+        try {
+          const saved = Number.parseInt(localStorage.getItem(storageKey) ?? '0', 10);
+          return Number.isNaN(saved) ? 0 : saved;
+        } catch {
+          return 0;
+        }
+      };
+
+      const writeCount = (count) => {
+        try {
+          localStorage.setItem(storageKey, String(count));
+        } catch {
+          // Ignore storage write failures and keep UI functional.
+        }
+      };
+
+      let clickCount = readCount();
 
       const renderCount = () => {
         countText.textContent = `已点击：${clickCount} 次`;
@@ -153,14 +169,14 @@
 
       button.addEventListener('click', () => {
         clickCount += 1;
-        localStorage.setItem(storageKey, String(clickCount));
+        writeCount(clickCount);
         renderCount();
         result.textContent = `按钮已点击 ${clickCount} 次，功能正常！`;
       });
 
       resetButton.addEventListener('click', () => {
         clickCount = 0;
-        localStorage.setItem(storageKey, '0');
+        writeCount(clickCount);
         renderCount();
         result.textContent = '计数已重置为 0。';
       });
