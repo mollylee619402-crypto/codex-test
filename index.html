@@ -323,7 +323,8 @@
 
       document.getElementById('download-btn').addEventListener('click', () => {
         const csvContent = editor.value;
-        const csvWithBom = `﻿${csvContent}`;
+        const utf8Bom = '\uFEFF';
+        const csvWithBom = `${utf8Bom}${csvContent}`;
         const blob = new Blob([csvWithBom], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
 
