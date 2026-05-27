@@ -173,6 +173,8 @@
           <button id="remove-dup-btn" type="button">去除重复行</button>
           <button id="sort-btn" type="button">按行排序</button>
           <button id="copy-btn" class="btn-main" type="button">一键复制结果</button>
+          <button id="upload-btn" type="button">上传 CSV 文件</button>
+          <input id="upload-input" type="file" accept=".csv,text/csv" hidden />
           <button id="download-btn" type="button">下载为 CSV 文件</button>
           <button id="clear-btn" class="btn-danger" type="button">清空内容</button>
         </div>
@@ -285,9 +287,44 @@
       });
 
 
+      document.getElementById('upload-btn').addEventListener('click', () => {
+        document.getElementById('upload-input').click();
+      });
+
+      document.getElementById('upload-input').addEventListener('change', (event) => {
+        const input = event.target;
+        const [file] = input.files || [];
+
+        if (!file) {
+          notice.textContent = '未选择文件。';
+          return;
+        }
+
+        const reader = new FileReader();
+
+        reader.onload = () => {
+          editor.value = typeof reader.result === 'string' ? reader.result : '';
+          saveInput();
+
+          const lines = editor.value === '' ? 0 : getLines(editor.value).length;
+          updateStats({ before: lines, after: lines, removedEmpty: 0, removedDup: 0 });
+          notice.textContent = `已加载本地 CSV 文件：${file.name}`;
+
+          input.value = '';
+        };
+
+        reader.onerror = () => {
+          notice.textContent = '读取文件失败，请重试。';
+          input.value = '';
+        };
+
+        reader.readAsText(file);
+      });
+
       document.getElementById('download-btn').addEventListener('click', () => {
         const csvContent = editor.value;
-        const csvWithBom = `﻿${csvContent}`;
+        const utf8Bom = '\uFEFF';
+        const csvWithBom = `${utf8Bom}${csvContent}`;
         const blob = new Blob([csvWithBom], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
 
