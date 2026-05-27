@@ -162,3 +162,86 @@ git commit -m "docs: initialize beginner-friendly README"
 
 A：请优先使用工具导出的 `cleaned.csv`（已包含 UTF-8 BOM，通常可被 Excel 正确识别中文）。如果仍有乱码，建议在 Excel 中通过“数据 -> 自文本/CSV 导入”，并在导入时手动选择编码为 UTF-8。
 
+
+## 7. Python Excel 项目周报自动汇总工具
+
+### 7.1 功能简介
+
+本仓库提供 `weekly_project_report_merge.py`，用于自动读取 `input/` 目录下多个 `.xlsx` 周报文件，汇总所有工作表中的项目记录，并输出到 `output/weekly_project_summary.xlsx`。
+
+工具特性：
+
+- 自动扫描 `input/` 下全部 `.xlsx` 文件。
+- 自动处理合并单元格（将合并区域左上角值填充到区域内每个单元格）。
+- 自动识别表头行（不要求表头在第 1 行）。
+- 支持字段别名匹配。
+- 跳过完全空白的行。
+- 保留中文与单元格中的换行内容。
+- 输出带基础样式（表头加粗、自动换行、列宽、冻结首行）。
+
+### 7.2 目录约定
+
+```text
+codex-test/
+├── weekly_project_report_merge.py
+├── requirements.txt
+├── input/                    # 放待汇总的 .xlsx 周报
+│   └── .gitkeep
+└── output/
+    ├── weekly_project_summary.xlsx
+    └── .gitkeep
+```
+
+### 7.3 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+### 7.4 使用方法
+
+1. 将周报 Excel 文件（`.xlsx`）放入 `input/` 目录。
+2. 运行命令：
+
+```bash
+python weekly_project_report_merge.py
+```
+
+3. 运行完成后，在 `output/weekly_project_summary.xlsx` 查看汇总结果。
+
+### 7.5 表头识别与别名说明
+
+脚本会自动识别包含核心关键词的表头行（例如：`项目名称`、`本周工作进展`、`下一步工作`）。
+
+已支持的别名示例：
+
+- `项目名称`：可匹配 `项目名`
+- `本周工作进展`：可匹配 `本周进展`、`本周工作`
+- `下一步工作时间节点`：可匹配 `时间节点`、`下一步时间`
+
+此外还支持常见扩展别名（如 `执行人` -> `执行人员`）。
+
+### 7.6 输出字段
+
+输出文件表头固定为：
+
+- 来源文件
+- 来源工作表
+- 序号
+- 项目名称
+- 项目概况
+- 执行人员
+- 项目进展情况
+- 本周工作进展
+- 下一步工作
+- 下一步工作时间节点
+
+### 7.7 终端统计信息
+
+脚本结束后会打印：
+
+- 读取了多少个 Excel 文件
+- 读取了多少个工作表
+- 成功汇总了多少条项目记录
+- 跳过了多少空行
+- 输出文件路径
