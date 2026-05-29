@@ -257,6 +257,7 @@ python weekly_project_report_merge.py
 - 自动创建 `input/` 和 `output/` 目录。
 - 递归扫描 `input/` 下的所有文件。
 - 根据扩展名自动识别常见文件类型。
+- 自动忽略 `.gitkeep`、`.DS_Store`、`Thumbs.db` 等系统或占位文件。
 - 输出 Excel 清单，包含基础样式、冻结首行、自动筛选和合理列宽。
 - 运行完成后在终端打印扫描文件数量和输出文件路径。
 
@@ -303,6 +304,7 @@ python project_file_inventory.py
 | --- | --- |
 | `.doc` / `.docx` | Word 文档 |
 | `.xls` / `.xlsx` | Excel 表格 |
+| `.ppt` / `.pptx` | PowerPoint 演示文稿 |
 | `.pdf` | PDF 文档 |
 | `.dwg` | CAD 图纸 |
 | `.dxf` | DXF 图纸 |
@@ -311,3 +313,11 @@ python project_file_inventory.py
 | `.jpg` / `.jpeg` / `.png` | 图片 |
 | `.zip` / `.rar` / `.7z` | 压缩包 |
 | 其他扩展名 | 其他文件 |
+
+### 8.6 忽略文件规则
+
+为避免把系统文件或目录占位文件写入资料清单，脚本会自动跳过以下文件：
+
+- `.gitkeep`
+- `.DS_Store`
+- `Thumbs.db`
