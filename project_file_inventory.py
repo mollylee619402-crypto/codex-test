@@ -24,11 +24,15 @@ OUTPUT_HEADERS = [
     "备注",
 ]
 
+IGNORED_FILENAMES = {".gitkeep", ".DS_Store", "Thumbs.db"}
+
 FILE_TYPE_MAP = {
     ".doc": "Word 文档",
     ".docx": "Word 文档",
     ".xls": "Excel 表格",
     ".xlsx": "Excel 表格",
+    ".ppt": "PowerPoint 演示文稿",
+    ".pptx": "PowerPoint 演示文稿",
     ".pdf": "PDF 文档",
     ".dwg": "CAD 图纸",
     ".dxf": "DXF 图纸",
@@ -94,8 +98,12 @@ def format_modified_time(timestamp: float) -> str:
     return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def should_include_file(path: Path) -> bool:
+    return path.is_file() and path.name not in IGNORED_FILENAMES
+
+
 def scan_input_files() -> List[FileInventoryItem]:
-    files = sorted(path for path in INPUT_DIR.rglob("*") if path.is_file())
+    files = sorted(path for path in INPUT_DIR.rglob("*") if should_include_file(path))
     inventory_items: List[FileInventoryItem] = []
 
     for index, file_path in enumerate(files, start=1):
