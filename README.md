@@ -245,3 +245,71 @@ python weekly_project_report_merge.py
 - 成功汇总了多少条项目记录
 - 跳过了多少空行
 - 输出文件路径
+
+## 8. 项目资料清单生成工具
+
+### 8.1 功能简介
+
+本仓库提供 `project_file_inventory.py`，用于新项目资料整理的第一步：递归扫描 `input/` 目录及其所有子目录，并自动生成 Excel 文件清单 `output/project_file_inventory.xlsx`。
+
+工具特性：
+
+- 自动创建 `input/` 和 `output/` 目录。
+- 递归扫描 `input/` 下的所有文件。
+- 根据扩展名自动识别常见文件类型。
+- 自动忽略 `.gitkeep`、`.DS_Store`、`Thumbs.db` 等系统或占位文件。
+- 输出 Excel 清单，包含基础样式、冻结首行、自动筛选和合理列宽。
+- 运行完成后在终端打印扫描文件数量和输出文件路径。
+
+### 8.2 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+依赖说明：
+
+- `openpyxl`：用于生成和设置 Excel 文件样式。
+
+### 8.3 使用方法
+
+1. 将需要整理的项目资料放入 `input/` 目录，可以按项目、专业或资料类别继续建立子文件夹。
+2. 运行命令：
+
+```bash
+python project_file_inventory.py
+```
+
+3. 运行完成后，在 `output/project_file_inventory.xlsx` 查看资料清单。
+
+### 8.4 输出字段说明
+
+生成的 Excel 文件包含以下字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| 序号 | 文件序号，从 1 开始递增 |
+| 文件名 | 文件名称，包含扩展名 |
+| 扩展名 | 文件扩展名，例如 `.pdf`、`.docx` |
+| 文件类型 | 根据扩展名识别出的文件类型 |
+| 所在文件夹 | 文件所在文件夹的完整路径 |
+| 完整路径 | 文件的完整路径 |
+| 文件大小KB | 文件大小，单位 KB |
+| 修改时间 | 文件最后修改时间 |
+| 备注 | 预留人工补充说明 |
+
+### 8.5 文件类型识别规则
+
+| 扩展名 | 文件类型 |
+| --- | --- |
+| `.doc` / `.docx` | Word 文档 |
+| `.xls` / `.xlsx` | Excel 表格 |
+| `.pdf` | PDF 文档 |
+| `.ppt` / `.pptx` | PowerPoint 演示文稿 |
+| `.dwg` | CAD 图纸 |
+| `.dxf` | DXF 图纸 |
+| `.csv` | CSV 表格 |
+| `.txt` | 文本文件 |
+| `.jpg` / `.jpeg` / `.png` | 图片 |
+| `.zip` / `.rar` / `.7z` | 压缩包 |
+| 其他扩展名 | 其他文件 |
