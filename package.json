@@ -11,7 +11,8 @@
   "dependencies": {
     "react": "latest",
     "react-dom": "latest",
-    "mermaid": "latest"
+    "mermaid": "latest",
+    "pptxgenjs": "latest"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "latest",

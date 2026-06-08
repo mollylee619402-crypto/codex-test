@@ -4,8 +4,12 @@ import InputPanel from './components/InputPanel'
 import OutputPanel from './components/OutputPanel'
 import { DEFAULT_EXAMPLE, DIAGRAM_TYPES } from './data/examples'
 import { buildFlowSummary, parseFlowDescription } from './utils/flowParser'
+import { downloadEditablePptx } from './utils/exportPptx'
+import { downloadPng } from './utils/exportPng'
+import { downloadMermaidSource, downloadSvg } from './utils/exportSvg'
 import { generateMermaid } from './utils/mermaidGenerator'
 import { generatePrompt } from './utils/promptGenerator'
+import { generateReportMetadata, metadataText } from './utils/reportMetadataGenerator'
 
 const STORAGE_KEY = 'flowcraft.templates'
 
@@ -48,6 +52,7 @@ function App() {
   const [style, setStyle] = useState(DEFAULT_EXAMPLE.style)
   const [mermaidCode, setMermaidCode] = useState('')
   const [summary, setSummary] = useState([])
+  const [metadata, setMetadata] = useState(generateReportMetadata(DEFAULT_EXAMPLE, []))
   const [templates, setTemplates] = useState([])
   const [feedback, setFeedback] = useState('')
   const [currentSvg, setCurrentSvg] = useState('')
@@ -70,19 +75,21 @@ function App() {
     const nodes = parseFlowDescription(source)
     setMermaidCode(generateMermaid(nodes, nextConfig))
     setSummary(buildFlowSummary(nodes, nextConfig))
+    setMetadata(generateReportMetadata(nextConfig, nodes))
   }, [input, config])
 
   useEffect(() => {
     setTemplates(readTemplates())
     const initialConfig = {
       diagramType: DEFAULT_EXAMPLE.diagramType,
-      diagramTypeLabel: DIAGRAM_TYPES.find((type) => type.value === DEFAULT_EXAMPLE.diagramType)?.label || '美化版流程图',
+      diagramTypeLabel: DIAGRAM_TYPES.find((type) => type.value === DEFAULT_EXAMPLE.diagramType)?.label || '资料收集与踏勘流程图',
       outputPurpose: DEFAULT_EXAMPLE.outputPurpose,
       style: DEFAULT_EXAMPLE.style
     }
     const nodes = parseFlowDescription(DEFAULT_EXAMPLE.content)
     setMermaidCode(generateMermaid(nodes, initialConfig))
     setSummary(buildFlowSummary(nodes, initialConfig))
+    setMetadata(generateReportMetadata(initialConfig, nodes))
 
     return () => {
       if (feedbackTimerRef.current) window.clearTimeout(feedbackTimerRef.current)
@@ -92,6 +99,16 @@ function App() {
   const saveTemplates = (nextTemplates) => {
     setTemplates(nextTemplates)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(nextTemplates))
+  }
+
+  const applyExample = (example) => {
+    setInput(example.content)
+    setDiagramType(example.diagramType)
+    setOutputPurpose(example.outputPurpose)
+    setStyle(example.style)
+    const label = DIAGRAM_TYPES.find((type) => type.value === example.diagramType)?.label || '环保工程流程图'
+    generate(example.content, { diagramType: example.diagramType, diagramTypeLabel: label, outputPurpose: example.outputPurpose, style: example.style })
+    showFeedback('环保工程示例已加载')
   }
 
   const handleSaveTemplate = () => {
@@ -153,29 +170,39 @@ function App() {
       showFeedback('当前没有可下载的 SVG')
       return
     }
-    const blob = new Blob([currentSvg], { type: 'image/svg+xml;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = 'flowcraft-diagram.svg'
-    document.body.appendChild(anchor)
-    anchor.click()
-    document.body.removeChild(anchor)
-    URL.revokeObjectURL(url)
+    downloadSvg(currentSvg, metadata.title)
     showFeedback('SVG 已下载')
   }
 
+  const handleDownloadPng = async () => {
+    if (!currentSvg) {
+      showFeedback('当前没有可下载的 SVG 预览')
+      return
+    }
+    try {
+      await downloadPng(currentSvg, metadata.title, 3)
+      showFeedback('PNG 已下载')
+    } catch {
+      showFeedback('PNG 导出失败，请刷新预览后重试')
+    }
+  }
+
+  const handleDownloadPptx = async () => {
+    try {
+      await downloadEditablePptx({ mermaidCode, metadata, summary, diagramType })
+      showFeedback('PPTX 可编辑版已下载')
+    } catch {
+      showFeedback('PPTX 导出失败，请检查浏览器下载权限')
+    }
+  }
+
+  const handleDownloadMermaid = () => {
+    downloadMermaidSource(mermaidCode, metadata.title)
+    showFeedback('Mermaid 源码已下载')
+  }
+
   const resetExample = () => {
-    setInput(DEFAULT_EXAMPLE.content)
-    setDiagramType(DEFAULT_EXAMPLE.diagramType)
-    setOutputPurpose(DEFAULT_EXAMPLE.outputPurpose)
-    setStyle(DEFAULT_EXAMPLE.style)
-    generate(DEFAULT_EXAMPLE.content, {
-      diagramType: DEFAULT_EXAMPLE.diagramType,
-      diagramTypeLabel: '美化版流程图',
-      outputPurpose: DEFAULT_EXAMPLE.outputPurpose,
-      style: DEFAULT_EXAMPLE.style
-    })
+    applyExample(DEFAULT_EXAMPLE)
     showFeedback('已重置示例')
   }
 
@@ -195,6 +222,7 @@ function App() {
           onGenerate={() => generate()}
           onClear={() => setInput('')}
           onSaveTemplate={handleSaveTemplate}
+          onLoadEnvironmentExample={applyExample}
           templates={templates}
           onLoadTemplate={handleLoadTemplate}
           onDeleteTemplate={handleDeleteTemplate}
@@ -203,9 +231,15 @@ function App() {
           mermaidCode={mermaidCode}
           setMermaidCode={setMermaidCode}
           summary={summary}
+          metadata={metadata}
+          metadataText={metadataText(metadata)}
           onCopyCode={() => copyText(mermaidCode, 'Mermaid 代码已复制')}
           onCopyPrompt={handleCopyPrompt}
+          onCopyMetadata={() => copyText(metadataText(metadata), '图题与说明已复制')}
           onDownloadSvg={handleDownloadSvg}
+          onDownloadPng={handleDownloadPng}
+          onDownloadPptx={handleDownloadPptx}
+          onDownloadMermaid={handleDownloadMermaid}
           onResetExample={resetExample}
           feedback={feedback}
           onSvgReady={setCurrentSvg}

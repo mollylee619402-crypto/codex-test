@@ -1,4 +1,4 @@
-import { DIAGRAM_TYPES, OUTPUT_PURPOSES, STYLE_OPTIONS } from '../data/examples'
+import { DIAGRAM_TYPES, ENVIRONMENT_EXAMPLES, OUTPUT_PURPOSES, STYLE_OPTIONS } from '../data/examples'
 import TemplateManager from './TemplateManager'
 
 function InputPanel({
@@ -13,10 +13,16 @@ function InputPanel({
   onGenerate,
   onClear,
   onSaveTemplate,
+  onLoadEnvironmentExample,
   templates,
   onLoadTemplate,
   onDeleteTemplate
 }) {
+  const handleExampleChange = (event) => {
+    const example = ENVIRONMENT_EXAMPLES.find((item) => item.id === event.target.value)
+    if (example) onLoadEnvironmentExample(example)
+  }
+
   return (
     <section className="panel input-panel">
       <div className="panel-heading">
@@ -24,12 +30,22 @@ function InputPanel({
         <span>把复杂流程变成清晰图示</span>
       </div>
 
+      <div className="example-switcher">
+        <label className="field-label">
+          环保工程内置示例
+          <select defaultValue="" onChange={handleExampleChange}>
+            <option value="" disabled>选择示例并载入</option>
+            {ENVIRONMENT_EXAMPLES.map((example) => <option value={example.id} key={example.id}>{example.name}</option>)}
+          </select>
+        </label>
+      </div>
+
       <label className="field-label" htmlFor="flow-input">流程描述</label>
       <textarea
         id="flow-input"
         value={input}
         onChange={(event) => setInput(event.target.value)}
-        placeholder="粘贴流程描述、PRD、会议纪要或 SOP……"
+        placeholder="粘贴流程描述、PRD、会议纪要、SOP、环保工程技术报告流程或项目组织架构描述……"
       />
 
       <div className="form-grid">
@@ -61,6 +77,10 @@ function InputPanel({
         <button type="button" className="primary" onClick={onGenerate}>生成流程图</button>
         <button type="button" onClick={onClear}>清空内容</button>
         <button type="button" onClick={onSaveTemplate}>保存为模板</button>
+      </div>
+
+      <div className="visio-tip">
+        <strong>导出提示：</strong>进入 Visio 调整建议下载 SVG 后插入；若需要文字和节点尽量可编辑，建议下载 PPTX 可编辑版。
       </div>
 
       <div className="template-card">
