@@ -1,0 +1,9 @@
+{
+  "name": "canvg",
+  "version": "0.0.0-flowcraft-local",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  }
+}
