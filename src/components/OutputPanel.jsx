@@ -1,4 +1,6 @@
 import MermaidPreview from './MermaidPreview'
+import ReportSvgPreview from './ReportSvgPreview'
+import { REPORT_SVG_NOTICE } from '../utils/reportDiagramTemplates.js'
 
 function OutputPanel({
   mermaidCode,
@@ -17,7 +19,9 @@ function OutputPanel({
   onDownloadMermaid,
   onResetExample,
   feedback,
-  onSvgReady
+  onSvgReady,
+  reportSvg = '',
+  isReportSvg = false
 }) {
   return (
     <section className="panel output-panel">
@@ -52,8 +56,11 @@ function OutputPanel({
       </div>
 
       <div className="preview-section">
-        <h3>流程图实时预览区</h3>
-        <MermaidPreview code={mermaidCode} onSvgReady={onSvgReady} />
+        <h3>{isReportSvg ? '报告版预览' : '流程图实时预览区'}</h3>
+        {isReportSvg && <p className="report-svg-tip">{REPORT_SVG_NOTICE}</p>}
+        {isReportSvg
+          ? <ReportSvgPreview svg={reportSvg} onSvgReady={onSvgReady} />
+          : <MermaidPreview code={mermaidCode} onSvgReady={onSvgReady} />}
       </div>
 
       <div className="summary-section">
