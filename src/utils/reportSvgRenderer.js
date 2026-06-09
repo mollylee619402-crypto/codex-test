@@ -1,6 +1,6 @@
 import { SITE_SURVEY_REPORT_LAYOUT } from './reportDiagramTemplates.js'
 
-const FONT_FAMILY = 'SimSun, Songti SC, STSong, "Noto Serif CJK SC", "Microsoft YaHei", serif'
+const FONT_FAMILY = 'serif'
 const TEXT_FILL = '#111111'
 const STROKE = '#111111'
 
@@ -26,11 +26,35 @@ function rect({ x, y, width, height, dashed = false, fill = '#ffffff', stroke = 
 }
 
 function node({ label, x, y, width, height, dashed = false }) {
-  return `<g class="report-node">${rect({ x, y, width, height, dashed })}${text(label, x + width / 2, y + height / 2, { size: 18 })}</g>`
+  return `<g>${rect({ x, y, width, height, dashed })}${text(label, x + width / 2, y + height / 2, { size: 18 })}</g>`
 }
 
 function arrow(x1, y1, x2, y2) {
   return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${STROKE}" stroke-width="1.4" marker-end="url(#arrow-head)"/>`
+}
+
+function reportArrow(x1, y1, x2, y2) {
+  const arrowSize = 8
+
+  if (x1 === x2) {
+    const direction = y2 >= y1 ? 1 : -1
+    const lineEndY = y2 - direction * arrowSize
+    const tip = y2
+    const base = lineEndY
+    return [
+      `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${lineEndY}" stroke="${STROKE}" stroke-width="1.2"/>`,
+      `<polygon points="${x2},${tip} ${x2 - 5},${base} ${x2 + 5},${base}" fill="${STROKE}"/>`
+    ].join('')
+  }
+
+  const direction = x2 >= x1 ? 1 : -1
+  const lineEndX = x2 - direction * arrowSize
+  const tip = x2
+  const base = lineEndX
+  return [
+    `<line x1="${x1}" y1="${y1}" x2="${lineEndX}" y2="${y2}" stroke="${STROKE}" stroke-width="1.2"/>`,
+    `<polygon points="${tip},${y2} ${base},${y2 - 5} ${base},${y2 + 5}" fill="${STROKE}"/>`
+  ].join('')
 }
 
 function renderSiteSurveySvg(metadata = {}) {
@@ -43,8 +67,8 @@ function renderSiteSurveySvg(metadata = {}) {
     parts.push(node({ ...item, x: nodeBox.x, width: nodeBox.width, height: nodeBox.height }))
   })
 
-  parts.push(rect({ x: group.x, y: group.y, width: group.width, height: group.height, strokeWidth: 1.4 }))
-  parts.push(text(group.label, group.x + group.width / 2, group.y + 19, { size: 18, bold: true }))
+  parts.push(rect({ x: group.x, y: group.y, width: group.width, height: group.height, strokeWidth: 1.3 }))
+  parts.push(text(group.label, group.x + group.width / 2, group.y + group.titleHeight / 2, { size: 18, bold: true }))
   parts.push(`<line x1="${group.x}" y1="${group.y + group.titleHeight}" x2="${group.x + group.width}" y2="${group.y + group.titleHeight}" stroke="${STROKE}" stroke-width="1.1"/>`)
   group.children.forEach((child) => parts.push(node(child)))
 
@@ -64,20 +88,15 @@ function renderSiteSurveySvg(metadata = {}) {
 
   flowStops.slice(0, -1).forEach((current, index) => {
     const next = flowStops[index + 1]
-    parts.push(arrow(centerX, current.bottom + 2, centerX, next.top - 4))
+    parts.push(reportArrow(centerX, current.bottom + 4, centerX, next.top - 6))
   })
 
   const caption = metadata.caption || layout.caption
-  parts.push(text(caption, layout.width / 2, 790, { size: 20, bold: true }))
+  parts.push(text(caption, layout.width / 2, layout.captionY, { size: 20, bold: true }))
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${layout.width}" height="${layout.height}" viewBox="0 0 ${layout.width} ${layout.height}" role="img" aria-label="${escapeXml(caption)}">
-  <defs>
-    <marker id="arrow-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="${STROKE}"/>
-    </marker>
-  </defs>
   <rect x="0" y="0" width="${layout.width}" height="${layout.height}" fill="#ffffff"/>
-  <g class="report-diagram" shape-rendering="geometricPrecision">
+  <g>
     ${parts.join('\n    ')}
   </g>
 </svg>`
@@ -128,7 +147,7 @@ function renderProjectOrgSvg(metadata = {}) {
 }
 
 export function renderReportSvg(templateType, input, metadata = {}) {
-  if (templateType === 'site-survey') return renderSiteSurveySvg(metadata)
+  if (templateType === 'site-survey' || templateType === '资料收集与踏勘流程图') return renderSiteSurveySvg(metadata)
   if (templateType === 'technical-service') return renderTechnicalServiceSvg(metadata)
   if (templateType === 'project-org') return renderProjectOrgSvg(metadata)
   return ''

@@ -1,5 +1,6 @@
 import pptxgen from 'pptxgenjs'
 import { fileNameFromTitle } from './fileName.js'
+import { SITE_SURVEY_REPORT_LAYOUT } from './reportDiagramTemplates.js'
 
 const PALETTE = {
   phase: { fill: 'F6F9FC', line: '9AAFC1' },
@@ -169,51 +170,68 @@ function addReportArrow(slide, pptx, x1, y1, x2, y2) {
 }
 
 function drawSiteSurveyReport(slide, pptx, metadata) {
-  const nodeX = 5.24
-  const nodeW = 2.82
-  const nodeH = 0.38
-  const centerX = nodeX + nodeW / 2
-  const ys = [0.35, 0.95, 1.55, 2.15]
-  ;['确定调查对象', '工作准备', '基本信息核实', '资料收集'].forEach((label, index) => {
-    addReportNode(slide, pptx, label, nodeX, ys[index], nodeW, nodeH)
+  const layout = SITE_SURVEY_REPORT_LAYOUT
+  const scale = 6.8 / layout.height
+  const offsetX = (13.333 - layout.width * scale) / 2
+  const offsetY = 0.18
+  const toX = (value) => offsetX + value * scale
+  const toY = (value) => offsetY + value * scale
+  const toW = (value) => value * scale
+  const toH = (value) => value * scale
+  const { node: nodeBox, group } = layout
+  const centerX = nodeBox.x + nodeBox.width / 2
+
+  layout.nodes.slice(0, 4).forEach((item) => {
+    addReportNode(slide, pptx, item.label, toX(nodeBox.x), toY(item.y), toW(nodeBox.width), toH(nodeBox.height), { fontSize: 11 })
   })
 
-  const groupX = 4.78
-  const groupY = 2.78
-  const groupW = 3.74
-  const groupH = 1.22
   slide.addShape(pptx.ShapeType.rect, {
-    x: groupX,
-    y: groupY,
-    w: groupW,
-    h: groupH,
+    x: toX(group.x),
+    y: toY(group.y),
+    w: toW(group.width),
+    h: toH(group.height),
     fill: { color: 'FFFFFF' },
     line: { color: '111111', width: 1 }
   })
-  addReportText(slide, '现场勘查', groupX, groupY + 0.04, groupW, 0.28, { fontSize: 11, bold: true })
+  addReportText(slide, group.label, toX(group.x), toY(group.y), toW(group.width), toH(group.titleHeight), { fontSize: 11, bold: true })
   slide.addShape(pptx.ShapeType.line, {
-    x: groupX,
-    y: groupY + 0.34,
-    w: groupW,
+    x: toX(group.x),
+    y: toY(group.y + group.titleHeight),
+    w: toW(group.width),
     h: 0,
     line: { color: '111111', width: 0.75 }
   })
-  addReportNode(slide, pptx, '现场踏勘', groupX + 0.42, groupY + 0.58, 1.24, 0.43)
-  addReportNode(slide, pptx, '人员访谈', groupX + 2.08, groupY + 0.58, 1.24, 0.43)
+  group.children.forEach((child) => {
+    addReportNode(slide, pptx, child.label, toX(child.x), toY(child.y), toW(child.width), toH(child.height), { fontSize: 11 })
+  })
 
-  addReportNode(slide, pptx, '信息整理与分析', nodeX, 4.45, nodeW, nodeH)
-  addReportNode(slide, pptx, '风险筛查与下步计划', nodeX, 5.05, nodeW, nodeH, { dashed: true })
+  layout.nodes.slice(4).forEach((item) => {
+    addReportNode(slide, pptx, item.label, toX(nodeBox.x), toY(item.y), toW(nodeBox.width), toH(nodeBox.height), { dashed: item.dashed, fontSize: 11 })
+  })
 
-  const stops = [
-    [ys[0] + nodeH, ys[1]],
-    [ys[1] + nodeH, ys[2]],
-    [ys[2] + nodeH, ys[3]],
-    [ys[3] + nodeH, groupY],
-    [groupY + groupH, 4.45],
-    [4.45 + nodeH, 5.05]
+  const flowStops = [
+    { top: layout.nodes[0].y, bottom: layout.nodes[0].y + nodeBox.height },
+    { top: layout.nodes[1].y, bottom: layout.nodes[1].y + nodeBox.height },
+    { top: layout.nodes[2].y, bottom: layout.nodes[2].y + nodeBox.height },
+    { top: layout.nodes[3].y, bottom: layout.nodes[3].y + nodeBox.height },
+    { top: group.y, bottom: group.y + group.height },
+    { top: layout.nodes[4].y, bottom: layout.nodes[4].y + nodeBox.height },
+    { top: layout.nodes[5].y, bottom: layout.nodes[5].y + nodeBox.height }
   ]
-  stops.forEach(([fromY, toY]) => addReportArrow(slide, pptx, centerX, fromY + 0.02, centerX, toY - 0.03))
-  addReportText(slide, metadata.caption || '图3-2 资料收集分析与踏勘工作流程图', 0.6, 6.1, 12.1, 0.35, { fontSize: 13, bold: true })
+  flowStops.slice(0, -1).forEach((current, index) => {
+    const next = flowStops[index + 1]
+    addReportArrow(slide, pptx, toX(centerX), toY(current.bottom + 4), toX(centerX), toY(next.top - 6))
+  })
+
+  addReportText(
+    slide,
+    metadata.caption || layout.caption,
+    0.6,
+    toY(layout.captionY) - 0.08,
+    12.1,
+    0.32,
+    { fontSize: 13, bold: true }
+  )
 }
 
 function addInfoSlide(slide, metadata, summary) {
