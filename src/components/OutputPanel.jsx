@@ -56,7 +56,7 @@ function OutputPanel({
       </div>
 
       <div className="preview-section">
-        <h3>{isReportSvg ? '报告版预览' : '流程图实时预览区'}</h3>
+        <h3>{isReportSvg ? '报告版 SVG 预览' : '流程图实时预览区'}</h3>
         {isReportSvg && <p className="report-svg-tip">{REPORT_SVG_NOTICE}</p>}
         {isReportSvg
           ? <ReportSvgPreview svg={reportSvg} onSvgReady={onSvgReady} />
