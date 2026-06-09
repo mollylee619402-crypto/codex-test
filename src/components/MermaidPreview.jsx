@@ -33,8 +33,13 @@ function MermaidPreview({ code, onSvgReady }) {
         const { svg } = await mermaid.render(renderId, code)
         if (!mounted) return
         setError('')
-        if (containerRef.current) containerRef.current.innerHTML = svg
-        onSvgReady(svg)
+        if (containerRef.current) {
+          containerRef.current.innerHTML = svg
+          const renderedSvg = containerRef.current.querySelector('svg')
+          onSvgReady(renderedSvg ? new XMLSerializer().serializeToString(renderedSvg) : svg)
+        } else {
+          onSvgReady(svg)
+        }
       } catch (renderError) {
         if (!mounted) return
         setError('Mermaid 渲染失败，请检查节点名称或连接关系。代码已保留，可手动调整。')

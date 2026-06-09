@@ -56,6 +56,7 @@ function App() {
   const [templates, setTemplates] = useState([])
   const [feedback, setFeedback] = useState('')
   const [currentSvg, setCurrentSvg] = useState('')
+  const [isPngExporting, setIsPngExporting] = useState(false)
   const feedbackTimerRef = useRef(null)
 
   const diagramTypeLabel = useMemo(
@@ -65,10 +66,14 @@ function App() {
 
   const config = useMemo(() => ({ diagramType, diagramTypeLabel, outputPurpose, style }), [diagramType, diagramTypeLabel, outputPurpose, style])
 
-  const showFeedback = useCallback((message) => {
+  const showFeedback = useCallback((message, autoHideDelay = 1800) => {
     setFeedback(message)
     if (feedbackTimerRef.current) window.clearTimeout(feedbackTimerRef.current)
-    feedbackTimerRef.current = window.setTimeout(() => setFeedback(''), 1800)
+    if (autoHideDelay > 0) {
+      feedbackTimerRef.current = window.setTimeout(() => setFeedback(''), autoHideDelay)
+    } else {
+      feedbackTimerRef.current = null
+    }
   }, [])
 
   const generate = useCallback((source = input, nextConfig = config) => {
@@ -165,6 +170,11 @@ function App() {
     copyText(generatePrompt({ input, diagramTypeLabel, outputPurpose, style }), '提示词已复制')
   }
 
+  const getPreviewSvgMarkup = () => {
+    const previewSvg = document.querySelector('.mermaid-preview svg')
+    return previewSvg ? new XMLSerializer().serializeToString(previewSvg) : ''
+  }
+
   const handleDownloadSvg = () => {
     if (!currentSvg) {
       showFeedback('当前没有可下载的 SVG')
@@ -175,15 +185,38 @@ function App() {
   }
 
   const handleDownloadPng = async () => {
-    if (!currentSvg) {
-      showFeedback('当前没有可下载的 SVG 预览')
+    console.info('[FlowCraft] PNG download button clicked')
+    if (isPngExporting) {
+      showFeedback('PNG 正在导出中，请稍候…', 0)
       return
     }
+
+    setIsPngExporting(true)
+    showFeedback('PNG 下载已触发，正在准备当前预览…', 0)
+
     try {
-      await downloadPng(currentSvg, metadata.title, 3)
-      showFeedback('PNG 已下载')
-    } catch {
-      showFeedback('PNG 导出失败，请刷新预览后重试')
+      await new Promise((resolve) => window.requestAnimationFrame(resolve))
+      const svgForExport = currentSvg || getPreviewSvgMarkup()
+      console.info('[FlowCraft] PNG export SVG status', {
+        hasStateSvg: Boolean(currentSvg),
+        hasPreviewSvg: Boolean(svgForExport),
+        length: svgForExport?.length || 0
+      })
+
+      if (!svgForExport) {
+        showFeedback('请先生成流程图后再下载 PNG', 3200)
+        return
+      }
+
+      showFeedback('PNG 正在高清导出，请稍候…', 0)
+      await downloadPng(svgForExport, metadata.title, 3)
+      showFeedback('PNG 已下载，请检查浏览器下载栏', 3200)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error('[FlowCraft] PNG export failed', error)
+      showFeedback(`PNG 导出失败：${message || '请先下载 SVG 或稍后重试'}`, 5200)
+    } finally {
+      setIsPngExporting(false)
     }
   }
 
@@ -238,6 +271,7 @@ function App() {
           onCopyMetadata={() => copyText(metadataText(metadata), '图题与说明已复制')}
           onDownloadSvg={handleDownloadSvg}
           onDownloadPng={handleDownloadPng}
+          isPngExporting={isPngExporting}
           onDownloadPptx={handleDownloadPptx}
           onDownloadMermaid={handleDownloadMermaid}
           onResetExample={resetExample}
