@@ -57,6 +57,7 @@ function App() {
   const [feedback, setFeedback] = useState('')
   const [currentSvg, setCurrentSvg] = useState('')
   const [isPngExporting, setIsPngExporting] = useState(false)
+  const [pngButtonLabel, setPngButtonLabel] = useState('下载 PNG')
   const feedbackTimerRef = useRef(null)
 
   const diagramTypeLabel = useMemo(
@@ -185,20 +186,18 @@ function App() {
     }
 
     setIsPngExporting(true)
+    setPngButtonLabel('正在导出 PNG...')
     showFeedback('正在导出 PNG...', 0)
 
     try {
       await downloadPng(currentSvg, metadata.title, 3)
+      setPngButtonLabel('PNG 下载已开始')
       showFeedback('PNG 下载已开始', 2600)
     } catch (error) {
       console.error('PNG export failed', error)
-      try {
-        downloadSvg(currentSvg, metadata.title)
-        showFeedback(`PNG 导出失败，已为你下载 SVG，可插入 Word/PPT/Visio 或稍后重试（原因：${error?.message || '未知错误'}）`, 5200)
-      } catch (fallbackError) {
-        console.error('PNG fallback SVG download failed', fallbackError)
-        showFeedback(`PNG 导出失败：${error?.message || '未知错误'}；SVG 降级下载也失败：${fallbackError?.message || '未知错误'}`, 6200)
-      }
+      const message = error?.message || '未知错误'
+      setPngButtonLabel(`PNG 导出失败：${message}`)
+      showFeedback(`PNG 导出失败，请点击下载 SVG，或使用 PPTX 可编辑版。（原因：${message}）`, 6200)
     } finally {
       setIsPngExporting(false)
     }
@@ -256,6 +255,7 @@ function App() {
           onDownloadSvg={handleDownloadSvg}
           onDownloadPng={handleDownloadPng}
           isPngExporting={isPngExporting}
+          pngButtonLabel={pngButtonLabel}
           onDownloadPptx={handleDownloadPptx}
           onDownloadMermaid={handleDownloadMermaid}
           onResetExample={resetExample}

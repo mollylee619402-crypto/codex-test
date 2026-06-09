@@ -2,6 +2,8 @@ import { fileNameFromTitle } from './fileName.js'
 import { downloadBlob } from './exportSvg.js'
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
+const XLINK_NAMESPACE = 'http://www.w3.org/1999/xlink'
+const PNG_MIME_TYPE = 'image/png'
 const DEFAULT_WIDTH = 1200
 const DEFAULT_HEIGHT = 800
 const DEFAULT_SCALE = 3
@@ -68,7 +70,7 @@ function prepareSvgForExport(svg) {
 
   clonedSvg.setAttribute('xmlns', SVG_NAMESPACE)
   if (!clonedSvg.getAttribute('xmlns:xlink')) {
-    clonedSvg.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink')
+    clonedSvg.setAttribute('xmlns:xlink', XLINK_NAMESPACE)
   }
 
   const { width, height } = getSvgSize(sourceSvg, clonedSvg)
@@ -87,6 +89,20 @@ function prepareSvgForExport(svg) {
     height,
     markup
   }
+}
+
+function createExportCanvas(width, height, scale) {
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.ceil(width * scale)
+  canvas.height = Math.ceil(height * scale)
+
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Canvas 2D context is unavailable')
+
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, canvas.width, canvas.height)
+
+  return { canvas, context }
 }
 
 function loadImage(url) {
@@ -113,7 +129,7 @@ function loadImage(url) {
 
 function dataUrlToBlob(dataUrl) {
   const [header, data] = dataUrl.split(',')
-  const mimeType = header.match(/data:(.*?);/)?.[1] || 'image/png'
+  const mimeType = header.match(/data:(.*?);/)?.[1] || PNG_MIME_TYPE
   const binary = atob(data)
   const bytes = new Uint8Array(binary.length)
   for (let index = 0; index < binary.length; index += 1) {
@@ -122,15 +138,36 @@ function dataUrlToBlob(dataUrl) {
   return new Blob([bytes], { type: mimeType })
 }
 
-function canvasToPngBlob(canvas) {
-  if (!canvas.toBlob) return Promise.resolve(dataUrlToBlob(canvas.toDataURL('image/png', 1)))
+function canvasDataUrlToPngBlob(canvas) {
+  return dataUrlToBlob(canvas.toDataURL(PNG_MIME_TYPE, 1))
+}
 
-  return new Promise((resolve, reject) => {
+function canvasToPngBlob(canvas) {
+  if (!canvas.toBlob) return Promise.resolve(canvasDataUrlToPngBlob(canvas))
+
+  return new Promise((resolve) => {
     canvas.toBlob((blob) => {
-      if (blob) resolve(blob)
-      else reject(new Error('canvas.toBlob returned null'))
-    }, 'image/png', 1)
+      resolve(blob || canvasDataUrlToPngBlob(canvas))
+    }, PNG_MIME_TYPE, 1)
   })
+}
+
+function assertPngBlob(blob) {
+  console.log('png blob created')
+  console.log('png blob type', blob?.type)
+
+  if (!(blob instanceof Blob)) {
+    throw new Error('PNG export did not create a Blob')
+  }
+
+  if (blob.type !== PNG_MIME_TYPE) {
+    throw new Error(`PNG export created an invalid MIME type: ${blob.type || 'empty'}`)
+  }
+}
+
+function pngFileName(title) {
+  const fileName = fileNameFromTitle(title, 'png')
+  return fileName.toLowerCase().endsWith('.png') ? fileName : `${fileName}.png`
 }
 
 export async function downloadPng(svg, title = 'flowcraft-diagram', scale = DEFAULT_SCALE) {
@@ -141,22 +178,16 @@ export async function downloadPng(svg, title = 'flowcraft-diagram', scale = DEFA
 
   try {
     const image = await loadImage(url)
-    const canvas = document.createElement('canvas')
-    canvas.width = Math.ceil(width * exportScale)
-    canvas.height = Math.ceil(height * exportScale)
+    const { canvas, context } = createExportCanvas(width, height, exportScale)
 
-    const context = canvas.getContext('2d')
-    if (!context) throw new Error('Canvas 2D context is unavailable')
-
-    context.fillStyle = '#ffffff'
-    context.fillRect(0, 0, canvas.width, canvas.height)
     context.drawImage(image, 0, 0, canvas.width, canvas.height)
     console.log('canvas drawn')
 
     const pngBlob = await canvasToPngBlob(canvas)
-    console.log('blob created')
-    downloadBlob(pngBlob, fileNameFromTitle(title, 'png'))
-    console.log('download triggered')
+    assertPngBlob(pngBlob)
+
+    downloadBlob(pngBlob, pngFileName(title))
+    console.log('png download triggered')
   } finally {
     URL.revokeObjectURL(url)
   }
