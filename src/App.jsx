@@ -56,6 +56,7 @@ function App() {
   const [templates, setTemplates] = useState([])
   const [feedback, setFeedback] = useState('')
   const [currentSvg, setCurrentSvg] = useState('')
+  const [isPngExporting, setIsPngExporting] = useState(false)
   const feedbackTimerRef = useRef(null)
 
   const diagramTypeLabel = useMemo(
@@ -65,10 +66,12 @@ function App() {
 
   const config = useMemo(() => ({ diagramType, diagramTypeLabel, outputPurpose, style }), [diagramType, diagramTypeLabel, outputPurpose, style])
 
-  const showFeedback = useCallback((message) => {
+  const showFeedback = useCallback((message, duration = 1800) => {
     setFeedback(message)
     if (feedbackTimerRef.current) window.clearTimeout(feedbackTimerRef.current)
-    feedbackTimerRef.current = window.setTimeout(() => setFeedback(''), 1800)
+    if (duration > 0) {
+      feedbackTimerRef.current = window.setTimeout(() => setFeedback(''), duration)
+    }
   }, [])
 
   const generate = useCallback((source = input, nextConfig = config) => {
@@ -175,16 +178,29 @@ function App() {
   }
 
   const handleDownloadPng = async () => {
+    console.log('PNG export clicked')
     if (!currentSvg) {
       showFeedback('请先生成流程图后再下载 PNG')
       return
     }
+
+    setIsPngExporting(true)
+    showFeedback('正在导出 PNG...', 0)
+
     try {
       await downloadPng(currentSvg, metadata.title, 3)
-      showFeedback('PNG 已下载')
+      showFeedback('PNG 下载已开始', 2600)
     } catch (error) {
       console.error('PNG export failed', error)
-      showFeedback('PNG 导出失败，请先下载 SVG 或稍后重试')
+      try {
+        downloadSvg(currentSvg, metadata.title)
+        showFeedback(`PNG 导出失败，已为你下载 SVG，可插入 Word/PPT/Visio 或稍后重试（原因：${error?.message || '未知错误'}）`, 5200)
+      } catch (fallbackError) {
+        console.error('PNG fallback SVG download failed', fallbackError)
+        showFeedback(`PNG 导出失败：${error?.message || '未知错误'}；SVG 降级下载也失败：${fallbackError?.message || '未知错误'}`, 6200)
+      }
+    } finally {
+      setIsPngExporting(false)
     }
   }
 
@@ -239,6 +255,7 @@ function App() {
           onCopyMetadata={() => copyText(metadataText(metadata), '图题与说明已复制')}
           onDownloadSvg={handleDownloadSvg}
           onDownloadPng={handleDownloadPng}
+          isPngExporting={isPngExporting}
           onDownloadPptx={handleDownloadPptx}
           onDownloadMermaid={handleDownloadMermaid}
           onResetExample={resetExample}
