@@ -129,6 +129,93 @@ function drawOrg(slide, pptx) {
   addArrow(slide, pptx, 6.35, 3.15, 9.1, 3.75)
 }
 
+function addReportText(slide, text, x, y, w, h, opts = {}) {
+  slide.addText(text, {
+    x,
+    y,
+    w,
+    h,
+    margin: opts.margin ?? 0.04,
+    fontFace: 'SimSun',
+    fontSize: opts.fontSize || 11,
+    bold: opts.bold || false,
+    color: opts.color || '111111',
+    align: opts.align || 'center',
+    valign: 'mid',
+    fit: 'shrink'
+  })
+}
+
+function addReportNode(slide, pptx, label, x, y, w, h, opts = {}) {
+  slide.addShape(pptx.ShapeType.rect, {
+    x,
+    y,
+    w,
+    h,
+    fill: { color: 'FFFFFF' },
+    line: { color: '111111', width: opts.dashed ? 1.2 : 1, dash: opts.dashed ? 'dash' : 'solid' }
+  })
+  addReportText(slide, label, x + 0.03, y + 0.02, w - 0.06, h - 0.04, { fontSize: opts.fontSize || 11, bold: opts.bold || false })
+}
+
+function addReportArrow(slide, pptx, x1, y1, x2, y2) {
+  slide.addShape(pptx.ShapeType.line, {
+    x: x1,
+    y: y1,
+    w: x2 - x1,
+    h: y2 - y1,
+    line: { color: '111111', width: 1, beginArrowType: 'none', endArrowType: 'triangle' }
+  })
+}
+
+function drawSiteSurveyReport(slide, pptx, metadata) {
+  const nodeX = 5.24
+  const nodeW = 2.82
+  const nodeH = 0.38
+  const centerX = nodeX + nodeW / 2
+  const ys = [0.35, 0.95, 1.55, 2.15]
+  ;['确定调查对象', '工作准备', '基本信息核实', '资料收集'].forEach((label, index) => {
+    addReportNode(slide, pptx, label, nodeX, ys[index], nodeW, nodeH)
+  })
+
+  const groupX = 4.78
+  const groupY = 2.78
+  const groupW = 3.74
+  const groupH = 1.22
+  slide.addShape(pptx.ShapeType.rect, {
+    x: groupX,
+    y: groupY,
+    w: groupW,
+    h: groupH,
+    fill: { color: 'FFFFFF' },
+    line: { color: '111111', width: 1 }
+  })
+  addReportText(slide, '现场勘查', groupX, groupY + 0.04, groupW, 0.28, { fontSize: 11, bold: true })
+  slide.addShape(pptx.ShapeType.line, {
+    x: groupX,
+    y: groupY + 0.34,
+    w: groupW,
+    h: 0,
+    line: { color: '111111', width: 0.75 }
+  })
+  addReportNode(slide, pptx, '现场踏勘', groupX + 0.42, groupY + 0.58, 1.24, 0.43)
+  addReportNode(slide, pptx, '人员访谈', groupX + 2.08, groupY + 0.58, 1.24, 0.43)
+
+  addReportNode(slide, pptx, '信息整理与分析', nodeX, 4.45, nodeW, nodeH)
+  addReportNode(slide, pptx, '风险筛查与下步计划', nodeX, 5.05, nodeW, nodeH, { dashed: true })
+
+  const stops = [
+    [ys[0] + nodeH, ys[1]],
+    [ys[1] + nodeH, ys[2]],
+    [ys[2] + nodeH, ys[3]],
+    [ys[3] + nodeH, groupY],
+    [groupY + groupH, 4.45],
+    [4.45 + nodeH, 5.05]
+  ]
+  stops.forEach(([fromY, toY]) => addReportArrow(slide, pptx, centerX, fromY + 0.02, centerX, toY - 0.03))
+  addReportText(slide, metadata.caption || '图3-2 资料收集分析与踏勘工作流程图', 0.6, 6.1, 12.1, 0.35, { fontSize: 13, bold: true })
+}
+
 function addInfoSlide(slide, metadata, summary) {
   slide.background = { color: 'F8FAFC' }
   slide.addText('流程说明与导出说明', { x: 0.55, y: 0.35, w: 12.1, h: 0.35, fontFace: 'Microsoft YaHei', fontSize: 20, bold: true, color: '1E3A5F' })
@@ -157,13 +244,18 @@ export async function downloadEditablePptx({ mermaidCode, metadata, summary, dia
 
   const slide = pptx.addSlide()
   slide.background = { color: 'FFFFFF' }
-  slide.addText(metadata.title, { x: 0.45, y: 0.25, w: 12.4, h: 0.35, fontFace: 'Microsoft YaHei', fontSize: 18, bold: true, color: '17324D', align: 'center' })
 
-  if (diagramType === 'technical-service') drawTechnicalService(slide, pptx)
-  else if (diagramType === 'project-org') drawOrg(slide, pptx)
-  else drawLinear(slide, pptx, splitLabelsFromMermaid(mermaidCode))
+  if (diagramType === 'site-survey') {
+    drawSiteSurveyReport(slide, pptx, metadata)
+  } else {
+    slide.addText(metadata.title, { x: 0.45, y: 0.25, w: 12.4, h: 0.35, fontFace: 'Microsoft YaHei', fontSize: 18, bold: true, color: '17324D', align: 'center' })
 
-  slide.addText(metadata.caption, { x: 0.45, y: 6.55, w: 12.4, h: 0.3, fontFace: 'Microsoft YaHei', fontSize: 12, bold: true, color: '334155', align: 'center' })
+    if (diagramType === 'technical-service') drawTechnicalService(slide, pptx)
+    else if (diagramType === 'project-org') drawOrg(slide, pptx)
+    else drawLinear(slide, pptx, splitLabelsFromMermaid(mermaidCode))
+
+    slide.addText(metadata.caption, { x: 0.45, y: 6.55, w: 12.4, h: 0.3, fontFace: 'Microsoft YaHei', fontSize: 12, bold: true, color: '334155', align: 'center' })
+  }
   addInfoSlide(pptx.addSlide(), metadata, summary)
 
   await pptx.writeFile({ fileName: fileNameFromTitle(metadata.title, 'pptx') })

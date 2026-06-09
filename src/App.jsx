@@ -8,6 +8,8 @@ import { downloadEditablePptx } from './utils/exportPptx'
 import { downloadPng } from './utils/exportPng'
 import { downloadMermaidSource, downloadSvg } from './utils/exportSvg'
 import { generateMermaid } from './utils/mermaidGenerator'
+import { isReportSvgTemplate } from './utils/reportDiagramTemplates'
+import { renderReportSvg } from './utils/reportSvgRenderer'
 import { generatePrompt } from './utils/promptGenerator'
 import { generateReportMetadata, metadataText } from './utils/reportMetadataGenerator'
 
@@ -66,6 +68,11 @@ function App() {
   )
 
   const config = useMemo(() => ({ diagramType, diagramTypeLabel, outputPurpose, style }), [diagramType, diagramTypeLabel, outputPurpose, style])
+
+  const isReportSvg = useMemo(() => isReportSvgTemplate(diagramType), [diagramType])
+  const reportSvg = useMemo(() => (
+    isReportSvg ? renderReportSvg(diagramType, input, metadata) : ''
+  ), [diagramType, input, metadata, isReportSvg])
 
   const showFeedback = useCallback((message, duration = 1800) => {
     setFeedback(message)
@@ -170,17 +177,19 @@ function App() {
   }
 
   const handleDownloadSvg = () => {
-    if (!currentSvg) {
+    const exportSvg = isReportSvg ? reportSvg : currentSvg
+    if (!exportSvg) {
       showFeedback('当前没有可下载的 SVG')
       return
     }
-    downloadSvg(currentSvg, metadata.title)
+    downloadSvg(exportSvg, metadata.title)
     showFeedback('SVG 已下载')
   }
 
   const handleDownloadPng = async () => {
     console.log('PNG export clicked')
-    if (!currentSvg) {
+    const exportSvg = isReportSvg ? reportSvg : currentSvg
+    if (!exportSvg) {
       showFeedback('请先生成流程图后再下载 PNG')
       return
     }
@@ -190,7 +199,7 @@ function App() {
     showFeedback('正在导出 PNG...', 0)
 
     try {
-      await downloadPng(currentSvg, metadata.title, 3)
+      await downloadPng(exportSvg, metadata.title, 3)
       setPngButtonLabel('PNG 下载已开始')
       showFeedback('PNG 下载已开始', 2600)
     } catch (error) {
@@ -261,6 +270,8 @@ function App() {
           onResetExample={resetExample}
           feedback={feedback}
           onSvgReady={setCurrentSvg}
+          reportSvg={reportSvg}
+          isReportSvg={isReportSvg}
         />
       </main>
     </div>
