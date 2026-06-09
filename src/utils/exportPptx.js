@@ -169,6 +169,25 @@ function addReportArrow(slide, pptx, x1, y1, x2, y2) {
   })
 }
 
+function addReportPolylineArrow(slide, pptx, points) {
+  if (!Array.isArray(points) || points.length < 2) return
+  points.slice(0, -1).forEach((point, index) => {
+    const next = points[index + 1]
+    slide.addShape(pptx.ShapeType.line, {
+      x: point.x,
+      y: point.y,
+      w: next.x - point.x,
+      h: next.y - point.y,
+      line: {
+        color: '111111',
+        width: 1,
+        beginArrowType: 'none',
+        endArrowType: index === points.length - 2 ? 'triangle' : 'none'
+      }
+    })
+  })
+}
+
 function drawSiteSurveyReport(slide, pptx, metadata) {
   const layout = SITE_SURVEY_REPORT_LAYOUT
   const scale = 6.8 / layout.height
@@ -304,17 +323,25 @@ function drawTechnicalServiceReport(slide, pptx, metadata) {
     const fromCenter = getReportNodePoint(from, scale, offsetX, offsetY)
     const toCenter = getReportNodePoint(to, scale, offsetX, offsetY)
     const verticalPreferred = Math.abs(fromCenter.x - toCenter.x) < Math.max(toW(from.width), toW(to.width)) * 0.65 || fromCenter.y < toCenter.y
-    let start
-    let end
     if (verticalPreferred) {
-      start = getReportNodePoint(from, scale, offsetX, offsetY, 'bottom')
-      end = getReportNodePoint(to, scale, offsetX, offsetY, 'top')
+      const start = getReportNodePoint(from, scale, offsetX, offsetY, 'bottom')
+      const end = getReportNodePoint(to, scale, offsetX, offsetY, 'top')
+      if (Math.abs(start.x - end.x) < 0.001) {
+        addReportArrow(slide, pptx, start.x, start.y, end.x, end.y)
+      } else {
+        const midY = start.y + (end.y - start.y) / 2
+        addReportPolylineArrow(slide, pptx, [start, { x: start.x, y: midY }, { x: end.x, y: midY }, end])
+      }
     } else {
       const leftToRight = fromCenter.x < toCenter.x
-      start = getReportNodePoint(from, scale, offsetX, offsetY, leftToRight ? 'right' : 'left')
-      end = getReportNodePoint(to, scale, offsetX, offsetY, leftToRight ? 'left' : 'right')
+      const start = getReportNodePoint(from, scale, offsetX, offsetY, leftToRight ? 'right' : 'left')
+      const end = getReportNodePoint(to, scale, offsetX, offsetY, leftToRight ? 'left' : 'right')
+      addReportArrow(slide, pptx, start.x, start.y, end.x, end.y)
     }
-    addReportArrow(slide, pptx, start.x, start.y, end.x, end.y)
+  })
+
+  ;(layout.routedArrows || []).forEach((route) => {
+    addReportPolylineArrow(slide, pptx, route.points.map(([x, y]) => ({ x: toX(x), y: toY(y) })))
   })
 
   addReportText(slide, metadata.caption || layout.caption, 0.4, toY(layout.captionY) - 0.06, 9.2, 0.28, { fontSize: 12, bold: true })
