@@ -176,14 +176,15 @@ function App() {
 
   const handleDownloadPng = async () => {
     if (!currentSvg) {
-      showFeedback('当前没有可下载的 SVG 预览')
+      showFeedback('请先生成流程图后再下载 PNG')
       return
     }
     try {
       await downloadPng(currentSvg, metadata.title, 3)
       showFeedback('PNG 已下载')
-    } catch {
-      showFeedback('PNG 导出失败，请刷新预览后重试')
+    } catch (error) {
+      console.error('PNG export failed', error)
+      showFeedback('PNG 导出失败，请先下载 SVG 或稍后重试')
     }
   }
 
