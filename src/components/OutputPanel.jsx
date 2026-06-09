@@ -12,6 +12,7 @@ function OutputPanel({
   onDownloadSvg,
   onDownloadPng,
   isPngExporting,
+  pngButtonLabel,
   onDownloadPptx,
   onDownloadMermaid,
   onResetExample,
@@ -42,7 +43,7 @@ function OutputPanel({
       <div className="export-toolbar" aria-label="导出工具栏">
         <button type="button" className="primary" onClick={onCopyCode}>复制 Mermaid 代码</button>
         <button type="button" onClick={onDownloadSvg}>下载 SVG</button>
-        <button type="button" onClick={onDownloadPng} disabled={isPngExporting}>{isPngExporting ? '正在导出 PNG...' : '下载 PNG'}</button>
+        <button type="button" onClick={onDownloadPng} disabled={isPngExporting}>{pngButtonLabel}</button>
         <button type="button" onClick={onDownloadPptx}>下载 PPTX 可编辑版</button>
         <button type="button" onClick={onDownloadMermaid}>下载 Mermaid 源码</button>
         <button type="button" onClick={onCopyMetadata}>复制图题与说明</button>
