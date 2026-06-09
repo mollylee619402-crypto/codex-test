@@ -4,6 +4,10 @@ import mermaid from 'mermaid'
 mermaid.initialize({
   startOnLoad: false,
   securityLevel: 'loose',
+  flowchart: {
+    htmlLabels: false,
+    useMaxWidth: false
+  },
   theme: 'base',
   themeVariables: {
     fontFamily: 'Inter, PingFang SC, Microsoft YaHei, sans-serif',

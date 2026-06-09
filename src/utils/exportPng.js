@@ -9,6 +9,10 @@ const DEFAULT_WIDTH = 1200
 const DEFAULT_HEIGHT = 800
 const DEFAULT_SCALE = 3
 const EXPORT_ERROR_MESSAGE = '当前图形包含浏览器无法栅格化的内容。建议下载 SVG 或 PPTX 可编辑版。'
+const EXPORT_TEXT_ERROR_MESSAGE = 'PNG 导出失败：未检测到可渲染的 SVG 文本，请尝试下载 SVG 或 PPTX 可编辑版'
+const EXPORT_FONT_FAMILY = 'Arial, "Microsoft YaHei", "Noto Sans SC", sans-serif'
+const DEFAULT_TEXT_FILL = '#1f2937'
+const DEFAULT_FONT_SIZE = '14'
 
 function parseLength(value) {
   if (!value || String(value).trim().endsWith('%')) return 0
@@ -98,6 +102,127 @@ function sanitizeSvgForPng(clonedSvg) {
   console.log('SVG sanitized')
 }
 
+function normalizeWhitespace(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim()
+}
+
+function parseCoordinate(value, fallback = 0) {
+  const parsed = Number.parseFloat(String(value || ''))
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function findInheritedAttribute(element, attributeName) {
+  let current = element
+  while (current) {
+    if (current.getAttribute?.(attributeName)) return current.getAttribute(attributeName)
+    current = current.parentElement
+  }
+  return ''
+}
+
+function getFontSize(element) {
+  return element.getAttribute('font-size')
+    || findInheritedAttribute(element.parentElement, 'font-size')
+    || DEFAULT_FONT_SIZE
+}
+
+function getTextFill(element) {
+  const fill = element.getAttribute('fill') || findInheritedAttribute(element.parentElement, 'fill')
+  if (fill && fill !== 'none' && fill !== 'currentColor') return fill
+
+  const color = element.getAttribute('color') || findInheritedAttribute(element.parentElement, 'color')
+  if (color && color !== 'currentColor') return color
+
+  return DEFAULT_TEXT_FILL
+}
+
+function inlineTextStyles(clonedSvg) {
+  clonedSvg.querySelectorAll('text, tspan').forEach((textElement) => {
+    textElement.setAttribute('font-family', EXPORT_FONT_FAMILY)
+    textElement.setAttribute('fill', getTextFill(textElement))
+
+    if (!textElement.getAttribute('font-size')) {
+      textElement.setAttribute('font-size', getFontSize(textElement))
+    }
+  })
+}
+
+function extractForeignObjectLines(foreignObject) {
+  const lines = []
+  foreignObject.querySelectorAll('br').forEach((breakElement) => {
+    breakElement.replaceWith(foreignObject.ownerDocument.createTextNode('\n'))
+  })
+
+  String(foreignObject.textContent || '')
+    .split(/\n+/)
+    .map((line) => normalizeWhitespace(line))
+    .filter(Boolean)
+    .forEach((line) => lines.push(line))
+
+  if (!lines.length) {
+    const text = normalizeWhitespace(foreignObject.textContent)
+    if (text) lines.push(text)
+  }
+
+  return lines
+}
+
+function convertForeignObjectToText(foreignObject) {
+  const lines = extractForeignObjectLines(foreignObject)
+  if (!lines.length) return
+
+  const document = foreignObject.ownerDocument
+  const text = document.createElementNS(SVG_NAMESPACE, 'text')
+  const x = parseCoordinate(foreignObject.getAttribute('x'))
+  const y = parseCoordinate(foreignObject.getAttribute('y'))
+  const width = parseCoordinate(foreignObject.getAttribute('width'))
+  const height = parseCoordinate(foreignObject.getAttribute('height'))
+  const fontSize = getFontSize(foreignObject)
+  const lineHeight = Math.max(12, Number.parseFloat(fontSize) || Number.parseFloat(DEFAULT_FONT_SIZE) || 14) * 1.2
+  const startY = y + (height ? (height - lineHeight * (lines.length - 1)) / 2 : 0)
+
+  text.setAttribute('x', String(x + (width ? width / 2 : 0)))
+  text.setAttribute('y', String(startY))
+  text.setAttribute('text-anchor', 'middle')
+  text.setAttribute('dominant-baseline', 'middle')
+  text.setAttribute('font-family', EXPORT_FONT_FAMILY)
+  text.setAttribute('font-size', fontSize)
+  text.setAttribute('fill', getTextFill(foreignObject))
+  text.setAttribute('data-flowcraft-converted-foreign-object', 'true')
+
+  lines.forEach((line, index) => {
+    const tspan = document.createElementNS(SVG_NAMESPACE, 'tspan')
+    tspan.setAttribute('x', text.getAttribute('x'))
+    if (index > 0) tspan.setAttribute('dy', String(lineHeight))
+    tspan.setAttribute('font-family', EXPORT_FONT_FAMILY)
+    tspan.setAttribute('font-size', fontSize)
+    tspan.setAttribute('fill', text.getAttribute('fill'))
+    tspan.textContent = line
+    text.appendChild(tspan)
+  })
+
+  foreignObject.replaceWith(text)
+}
+
+function ensureSvgTextForPng(clonedSvg) {
+  const textNodes = Array.from(clonedSvg.querySelectorAll('text'))
+  const foreignObjectNodes = Array.from(clonedSvg.querySelectorAll('foreignObject'))
+
+  console.log('[FlowCraft] text nodes count', textNodes.length)
+  console.log('[FlowCraft] foreignObject nodes count', foreignObjectNodes.length)
+
+  if (textNodes.length === 0 && foreignObjectNodes.length > 0) {
+    console.warn('当前 Mermaid 使用 HTML 标签渲染文字，正在尝试转换为 SVG text')
+  }
+
+  foreignObjectNodes.forEach(convertForeignObjectToText)
+  inlineTextStyles(clonedSvg)
+
+  if (clonedSvg.querySelectorAll('text').length === 0) {
+    throw new Error(EXPORT_TEXT_ERROR_MESSAGE)
+  }
+}
+
 function ensureLightBackground(clonedSvg, width, height) {
   const background = clonedSvg.ownerDocument.createElementNS(SVG_NAMESPACE, 'rect')
   background.setAttribute('x', '0')
@@ -127,6 +252,7 @@ function prepareSvgForExport(svg) {
   }
 
   sanitizeSvgForPng(clonedSvg)
+  ensureSvgTextForPng(clonedSvg)
   ensureLightBackground(clonedSvg, width, height)
 
   const markup = new XMLSerializer().serializeToString(clonedSvg)
@@ -211,6 +337,9 @@ export async function downloadPng(svg, title = 'flowcraft-diagram', scale = DEFA
     console.log('png download triggered')
   } catch (error) {
     console.error('PNG export failed in canvg pipeline', error)
+    if (error?.message === EXPORT_TEXT_ERROR_MESSAGE) {
+      throw error
+    }
     throw new Error(EXPORT_ERROR_MESSAGE)
   }
 }
