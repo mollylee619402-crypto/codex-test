@@ -99,6 +99,60 @@ function reportArrow(x1, y1, x2, y2) {
   ].join('')
 }
 
+function arrowHeadForSegment(start, end, size = 8, half = 5) {
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+  const length = Math.hypot(dx, dy) || 1
+  const ux = dx / length
+  const uy = dy / length
+  const base = { x: end.x - ux * size, y: end.y - uy * size }
+  const px = -uy * half
+  const py = ux * half
+  return {
+    lineEnd: base,
+    polygon: `${end.x},${end.y} ${base.x + px},${base.y + py} ${base.x - px},${base.y - py}`
+  }
+}
+
+function drawPolylineArrow(points, options = {}) {
+  if (!Array.isArray(points) || points.length < 2) return ''
+  const normalized = points.map(([x, y]) => ({ x, y }))
+  const last = normalized[normalized.length - 1]
+  const beforeLast = normalized[normalized.length - 2]
+  const { lineEnd, polygon } = arrowHeadForSegment(beforeLast, last, options.arrowSize || 8, options.arrowHalf || 5)
+  const linePoints = normalized.slice(0, -1).concat(lineEnd).map((point) => `${point.x},${point.y}`).join(' ')
+  return [
+    `<polyline points="${linePoints}" fill="none" stroke="${options.stroke || STROKE}" stroke-width="${options.strokeWidth || 1.2}" stroke-linejoin="miter" stroke-linecap="butt"/>`,
+    `<polygon points="${polygon}" fill="${options.stroke || STROKE}"/>`
+  ].join('')
+}
+
+function drawLineArrow(x1, y1, x2, y2, options = {}) {
+  return drawPolylineArrow([[x1, y1], [x2, y2]], options)
+}
+
+function drawNode(item, options = {}) {
+  return node({ ...item, ...options })
+}
+
+function drawPhaseBox(stage, layout) {
+  return rect({
+    x: stage.x,
+    y: stage.y,
+    width: stage.width,
+    height: stage.height,
+    fill: '#ffffff',
+    stroke: layout.stageStroke,
+    strokeWidth: 1.8,
+    dashed: true,
+    dashArray: layout.stageDashArray
+  })
+}
+
+function drawCaption(caption, x, y, options = {}) {
+  return text(caption, x, y, { size: 18, bold: true, ...options })
+}
+
 function renderSiteSurveySvg(metadata = {}) {
   const layout = SITE_SURVEY_REPORT_LAYOUT
   const { node: nodeBox, group } = layout
@@ -143,11 +197,13 @@ function renderSiteSurveySvg(metadata = {}) {
 </svg>`
 }
 
-function renderVerticalLabel(label, x, y, size = 18) {
+function renderVerticalLabel(label, x, y, size = 16) {
   const chars = Array.from(label)
-  const tspans = chars.map((char, index) => `<tspan x="${x}" dy="${index === 0 ? 0 : size + 2}">${escapeXml(char)}</tspan>`).join('')
+  const lineHeight = size + 1
+  const tspans = chars.map((char, index) => `<tspan x="${x}" dy="${index === 0 ? 0 : lineHeight}">${escapeXml(char)}</tspan>`).join('')
   return `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="middle" font-family="${FONT_FAMILY}" font-size="${size}" fill="#b32626" font-weight="700">${tspans}</text>`
 }
+
 
 function getNodeCenter(item, side = 'center') {
   if (side === 'top') return { x: item.x + item.width / 2, y: item.y }
@@ -165,14 +221,17 @@ function smartArrow(from, to) {
   if (verticalPreferred) {
     const start = getNodeCenter(from, 'bottom')
     const end = getNodeCenter(to, 'top')
-    return reportArrow(start.x, start.y + 4, end.x, end.y - 4)
+    if (Math.abs(start.x - end.x) < 0.1) return drawLineArrow(start.x, start.y + 4, end.x, end.y - 4)
+    const midY = start.y + (end.y - start.y) / 2
+    return drawPolylineArrow([[start.x, start.y + 4], [start.x, midY], [end.x, midY], [end.x, end.y - 4]])
   }
 
   const leftToRight = fromCenter.x < toCenter.x
   const start = getNodeCenter(from, leftToRight ? 'right' : 'left')
   const end = getNodeCenter(to, leftToRight ? 'left' : 'right')
-  return reportArrow(start.x + (leftToRight ? 4 : -4), start.y, end.x + (leftToRight ? -4 : 4), end.y)
+  return drawLineArrow(start.x + (leftToRight ? 4 : -4), start.y, end.x + (leftToRight ? -4 : 4), end.y)
 }
+
 
 function renderTechnicalServiceSvg(metadata = {}) {
   const layout = TECHNICAL_SERVICE_REPORT_LAYOUT
@@ -182,23 +241,12 @@ function renderTechnicalServiceSvg(metadata = {}) {
   const parts = []
 
   layout.stages.forEach((stage) => {
-    parts.push(rect({
-      x: stage.x,
-      y: stage.y,
-      width: stage.width,
-      height: stage.height,
-      fill: '#ffffff',
-      stroke: layout.stageStroke,
-      strokeWidth: 1.8,
-      dashed: true,
-      dashArray: layout.stageDashArray
-    }))
-    parts.push(renderVerticalLabel(stage.label, stage.labelX, stage.labelY, stage.label.length > 10 ? 16 : 18))
+    parts.push(drawPhaseBox(stage, layout))
+    parts.push(renderVerticalLabel(stage.label, stage.labelX, stage.labelY, stage.label.length > 10 ? 14 : 16))
   })
 
   layout.nodes.forEach((item) => {
-    parts.push(node({
-      ...item,
+    parts.push(drawNode(item, {
       fill: colorByStage[item.stage] || '#ffffff',
       stroke: '#333333',
       textSize: item.small ? 15 : 16,
@@ -212,7 +260,11 @@ function renderTechnicalServiceSvg(metadata = {}) {
     if (from && to) parts.push(smartArrow(from, to))
   })
 
-  parts.push(text(caption, layout.width / 2, layout.captionY, { size: 20, bold: true }))
+  ;(layout.routedArrows || []).forEach((route) => {
+    parts.push(drawPolylineArrow(route.points))
+  })
+
+  parts.push(drawCaption(caption, layout.width / 2, layout.captionY, { size: 16, bold: true }))
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${layout.width}" height="${layout.height}" viewBox="0 0 ${layout.width} ${layout.height}" role="img" aria-label="${escapeXml(caption)}">
   <rect x="0" y="0" width="${layout.width}" height="${layout.height}" fill="#ffffff"/>
