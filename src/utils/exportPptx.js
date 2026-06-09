@@ -1,6 +1,6 @@
 import pptxgen from 'pptxgenjs'
 import { fileNameFromTitle } from './fileName.js'
-import { SITE_SURVEY_REPORT_LAYOUT } from './reportDiagramTemplates.js'
+import { SITE_SURVEY_REPORT_LAYOUT, TECHNICAL_SERVICE_REPORT_LAYOUT } from './reportDiagramTemplates.js'
 
 const PALETTE = {
   phase: { fill: 'F6F9FC', line: '9AAFC1' },
@@ -153,8 +153,8 @@ function addReportNode(slide, pptx, label, x, y, w, h, opts = {}) {
     y,
     w,
     h,
-    fill: { color: 'FFFFFF' },
-    line: { color: '111111', width: opts.dashed ? 1.2 : 1, dash: opts.dashed ? 'dash' : 'solid' }
+    fill: { color: opts.fill || 'FFFFFF' },
+    line: { color: opts.lineColor || '111111', width: opts.dashed ? 1.2 : 1, dash: opts.dashed ? 'dash' : 'solid' }
   })
   addReportText(slide, label, x + 0.03, y + 0.02, w - 0.06, h - 0.04, { fontSize: opts.fontSize || 11, bold: opts.bold || false })
 }
@@ -227,9 +227,104 @@ function drawSiteSurveyReport(slide, pptx, metadata) {
   )
 }
 
-function addInfoSlide(slide, metadata, summary) {
+function getReportNodePoint(item, scale, offsetX, offsetY, side = 'center') {
+  const x = offsetX + item.x * scale
+  const y = offsetY + item.y * scale
+  const w = item.width * scale
+  const h = item.height * scale
+  if (side === 'top') return { x: x + w / 2, y }
+  if (side === 'bottom') return { x: x + w / 2, y: y + h }
+  if (side === 'left') return { x, y: y + h / 2 }
+  if (side === 'right') return { x: x + w, y: y + h / 2 }
+  return { x: x + w / 2, y: y + h / 2 }
+}
+
+function addVerticalReportLabel(slide, label, x, y, fontSize = 11) {
+  slide.addText(Array.from(label).join('\n'), {
+    x,
+    y,
+    w: 0.32,
+    h: Math.max(1.0, label.length * 0.18),
+    margin: 0,
+    breakLine: false,
+    fontFace: 'SimSun',
+    fontSize,
+    bold: true,
+    color: 'B32626',
+    align: 'center',
+    valign: 'mid',
+    fit: 'shrink'
+  })
+}
+
+function drawTechnicalServiceReport(slide, pptx, metadata) {
+  const layout = TECHNICAL_SERVICE_REPORT_LAYOUT
+  const slideWidth = 10
+  const slideHeight = 19
+  const scale = Math.min(slideWidth / layout.width, slideHeight / layout.height)
+  const offsetX = (slideWidth - layout.width * scale) / 2
+  const offsetY = (slideHeight - layout.height * scale) / 2
+  const toX = (value) => offsetX + value * scale
+  const toY = (value) => offsetY + value * scale
+  const toW = (value) => value * scale
+  const toH = (value) => value * scale
+  const nodeById = Object.fromEntries(layout.nodes.map((item) => [item.id, item]))
+  const colorByStage = Object.fromEntries(layout.stages.map((stage) => [stage.id, stage.color.replace('#', '').toUpperCase()]))
+
+  layout.stages.forEach((stage) => {
+    slide.addShape(pptx.ShapeType.rect, {
+      x: toX(stage.x),
+      y: toY(stage.y),
+      w: toW(stage.width),
+      h: toH(stage.height),
+      fill: { color: 'FFFFFF', transparency: 100 },
+      line: { color: layout.stageStroke.replace('#', '').toUpperCase(), width: 1.3, dash: 'dash' }
+    })
+    addVerticalReportLabel(slide, stage.label, toX(stage.labelX) - 0.16, toY(stage.labelY), stage.label.length > 10 ? 10 : 11)
+  })
+
+  layout.nodes.forEach((item) => {
+    addReportNode(
+      slide,
+      pptx,
+      item.label,
+      toX(item.x),
+      toY(item.y),
+      toW(item.width),
+      toH(item.height),
+      { fill: colorByStage[item.stage] || 'FFFFFF', fontSize: item.small ? 7.4 : 8.4 }
+    )
+  })
+
+  layout.arrows.forEach(([fromId, toId]) => {
+    const from = nodeById[fromId]
+    const to = nodeById[toId]
+    if (!from || !to) return
+
+    const fromCenter = getReportNodePoint(from, scale, offsetX, offsetY)
+    const toCenter = getReportNodePoint(to, scale, offsetX, offsetY)
+    const verticalPreferred = Math.abs(fromCenter.x - toCenter.x) < Math.max(toW(from.width), toW(to.width)) * 0.65 || fromCenter.y < toCenter.y
+    let start
+    let end
+    if (verticalPreferred) {
+      start = getReportNodePoint(from, scale, offsetX, offsetY, 'bottom')
+      end = getReportNodePoint(to, scale, offsetX, offsetY, 'top')
+    } else {
+      const leftToRight = fromCenter.x < toCenter.x
+      start = getReportNodePoint(from, scale, offsetX, offsetY, leftToRight ? 'right' : 'left')
+      end = getReportNodePoint(to, scale, offsetX, offsetY, leftToRight ? 'left' : 'right')
+    }
+    addReportArrow(slide, pptx, start.x, start.y, end.x, end.y)
+  })
+
+  addReportText(slide, metadata.caption || layout.caption, 0.4, toY(layout.captionY) - 0.06, 9.2, 0.28, { fontSize: 12, bold: true })
+}
+
+function addInfoSlide(slide, metadata, summary, isTallLayout = false) {
   slide.background = { color: 'F8FAFC' }
-  slide.addText('流程说明与导出说明', { x: 0.55, y: 0.35, w: 12.1, h: 0.35, fontFace: 'Microsoft YaHei', fontSize: 20, bold: true, color: '1E3A5F' })
+  const width = isTallLayout ? 8.9 : 12.1
+  const textHeight = isTallLayout ? 17.1 : 5.7
+  slide.addText('流程说明与导出说明', { x: 0.55, y: 0.35, w: width, h: 0.35, fontFace: 'Microsoft YaHei', fontSize: 20, bold: true, color: '1E3A5F' })
   const text = [
     metadata.description,
     '',
@@ -241,12 +336,17 @@ function addInfoSlide(slide, metadata, summary) {
     '',
     ...(summary || [])
   ].join('\n')
-  slide.addText(text, { x: 0.75, y: 1.0, w: 11.85, h: 5.7, fontFace: 'Microsoft YaHei', fontSize: 12, color: '334155', breakLine: false, fit: 'shrink', valign: 'top', margin: 0.1, bullet: false })
+  slide.addText(text, { x: 0.75, y: 1.0, w: width - 0.25, h: textHeight, fontFace: 'Microsoft YaHei', fontSize: 12, color: '334155', breakLine: false, fit: 'shrink', valign: 'top', margin: 0.1, bullet: false })
 }
 
 export async function downloadEditablePptx({ mermaidCode, metadata, summary, diagramType }) {
   const pptx = new pptxgen()
-  pptx.layout = 'LAYOUT_WIDE'
+  if (diagramType === 'technical-service') {
+    pptx.defineLayout({ name: 'FLOWCRAFT_TALL', width: 10, height: 19 })
+    pptx.layout = 'FLOWCRAFT_TALL'
+  } else {
+    pptx.layout = 'LAYOUT_WIDE'
+  }
   pptx.author = 'FlowCraft'
   pptx.subject = '环保工程流程图与组织架构图'
   pptx.title = metadata.title
@@ -258,16 +358,17 @@ export async function downloadEditablePptx({ mermaidCode, metadata, summary, dia
 
   if (diagramType === 'site-survey') {
     drawSiteSurveyReport(slide, pptx, metadata)
+  } else if (diagramType === 'technical-service') {
+    drawTechnicalServiceReport(slide, pptx, metadata)
   } else {
     slide.addText(metadata.title, { x: 0.45, y: 0.25, w: 12.4, h: 0.35, fontFace: 'Microsoft YaHei', fontSize: 18, bold: true, color: '17324D', align: 'center' })
 
-    if (diagramType === 'technical-service') drawTechnicalService(slide, pptx)
-    else if (diagramType === 'project-org') drawOrg(slide, pptx)
+    if (diagramType === 'project-org') drawOrg(slide, pptx)
     else drawLinear(slide, pptx, splitLabelsFromMermaid(mermaidCode))
 
     slide.addText(metadata.caption, { x: 0.45, y: 6.55, w: 12.4, h: 0.3, fontFace: 'Microsoft YaHei', fontSize: 12, bold: true, color: '334155', align: 'center' })
   }
-  addInfoSlide(pptx.addSlide(), metadata, summary)
+  addInfoSlide(pptx.addSlide(), metadata, summary, diagramType === 'technical-service')
 
   await pptx.writeFile({ fileName: fileNameFromTitle(metadata.title, 'pptx') })
 }

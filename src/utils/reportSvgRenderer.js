@@ -1,4 +1,4 @@
-import { SITE_SURVEY_REPORT_LAYOUT } from './reportDiagramTemplates.js'
+import { SITE_SURVEY_REPORT_LAYOUT, TECHNICAL_SERVICE_REPORT_LAYOUT } from './reportDiagramTemplates.js'
 
 const FONT_FAMILY = "SimSun, 'Songti SC', 'Microsoft YaHei', serif"
 const TEXT_FILL = '#111111'
@@ -25,9 +25,40 @@ function rect({ x, y, width, height, dashed = false, fill = '#ffffff', stroke = 
   return `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"${dash}/>`
 }
 
-function node({ label, x, y, width, height, dashed = false, textSize = 18 }) {
+function wrapLabel(label, maxChars = 12) {
+  const source = String(label || '')
+  if (source.length <= maxChars) return [source]
+
+  const lines = []
+  let current = ''
+  Array.from(source).forEach((char) => {
+    current += char
+    if (current.length >= maxChars || /[，、（）]/.test(char)) {
+      lines.push(current)
+      current = ''
+    }
+  })
+  if (current) lines.push(current)
+  return lines.slice(0, 3)
+}
+
+function multiLineText(label, x, y, options = {}) {
+  const weight = options.bold ? ' font-weight="700"' : ''
+  const size = options.size || 18
+  const anchor = options.anchor || 'middle'
+  const lines = wrapLabel(label, options.maxChars || 12)
+  const lineHeight = options.lineHeight || Math.round(size * 1.25)
+  const startDy = -((lines.length - 1) * lineHeight) / 2
+  const tspans = lines.map((line, index) => {
+    const dy = index === 0 ? startDy : lineHeight
+    return `<tspan x="${x}" dy="${dy}">${escapeXml(line)}</tspan>`
+  }).join('')
+  return `<text x="${x}" y="${y}" text-anchor="${anchor}" dominant-baseline="middle" font-family="${FONT_FAMILY}" font-size="${size}" fill="${TEXT_FILL}"${weight}>${tspans}</text>`
+}
+
+function node({ label, x, y, width, height, dashed = false, textSize = 18, fill = '#ffffff', stroke = STROKE, maxChars }) {
   const strokeWidth = dashed ? 1.3 : 1.4
-  return `<g>${rect({ x, y, width, height, dashed, strokeWidth, dashArray: '6 4' })}${text(label, x + width / 2, y + height / 2, { size: textSize })}</g>`
+  return `<g>${rect({ x, y, width, height, dashed, strokeWidth, dashArray: '6 4', fill, stroke })}${multiLineText(label, x + width / 2, y + height / 2, { size: textSize, maxChars })}</g>`
 }
 
 function arrow(x1, y1, x2, y2) {
@@ -48,13 +79,23 @@ function reportArrow(x1, y1, x2, y2) {
     ].join('')
   }
 
-  const direction = x2 >= x1 ? 1 : -1
-  const lineEndX = x2 - direction * arrowSize
-  const tip = x2
-  const base = lineEndX
+  if (y1 === y2) {
+    const direction = x2 >= x1 ? 1 : -1
+    const lineEndX = x2 - direction * arrowSize
+    const tip = x2
+    const base = lineEndX
+    return [
+      `<line x1="${x1}" y1="${y1}" x2="${lineEndX}" y2="${y2}" stroke="${STROKE}" stroke-width="1.2"/>`,
+      `<polygon points="${tip},${y2} ${base},${y2 - 5} ${base},${y2 + 5}" fill="${STROKE}"/>`
+    ].join('')
+  }
+
+  const midY = y1 + (y2 - y1) / 2
+  const direction = y2 >= y1 ? 1 : -1
+  const lineEndY = y2 - direction * arrowSize
   return [
-    `<line x1="${x1}" y1="${y1}" x2="${lineEndX}" y2="${y2}" stroke="${STROKE}" stroke-width="1.2"/>`,
-    `<polygon points="${tip},${y2} ${base},${y2 - 5} ${base},${y2 + 5}" fill="${STROKE}"/>`
+    `<polyline points="${x1},${y1} ${x1},${midY} ${x2},${midY} ${x2},${lineEndY}" fill="none" stroke="${STROKE}" stroke-width="1.2"/>`,
+    `<polygon points="${x2},${y2} ${x2 - 5},${lineEndY} ${x2 + 5},${lineEndY}" fill="${STROKE}"/>`
   ].join('')
 }
 
@@ -102,27 +143,83 @@ function renderSiteSurveySvg(metadata = {}) {
 </svg>`
 }
 
+function renderVerticalLabel(label, x, y, size = 18) {
+  const chars = Array.from(label)
+  const tspans = chars.map((char, index) => `<tspan x="${x}" dy="${index === 0 ? 0 : size + 2}">${escapeXml(char)}</tspan>`).join('')
+  return `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="middle" font-family="${FONT_FAMILY}" font-size="${size}" fill="#b32626" font-weight="700">${tspans}</text>`
+}
+
+function getNodeCenter(item, side = 'center') {
+  if (side === 'top') return { x: item.x + item.width / 2, y: item.y }
+  if (side === 'bottom') return { x: item.x + item.width / 2, y: item.y + item.height }
+  if (side === 'left') return { x: item.x, y: item.y + item.height / 2 }
+  if (side === 'right') return { x: item.x + item.width, y: item.y + item.height / 2 }
+  return { x: item.x + item.width / 2, y: item.y + item.height / 2 }
+}
+
+function smartArrow(from, to) {
+  const fromCenter = getNodeCenter(from)
+  const toCenter = getNodeCenter(to)
+  const verticalPreferred = Math.abs(fromCenter.x - toCenter.x) < Math.max(from.width, to.width) * 0.65 || fromCenter.y < to.y
+
+  if (verticalPreferred) {
+    const start = getNodeCenter(from, 'bottom')
+    const end = getNodeCenter(to, 'top')
+    return reportArrow(start.x, start.y + 4, end.x, end.y - 4)
+  }
+
+  const leftToRight = fromCenter.x < toCenter.x
+  const start = getNodeCenter(from, leftToRight ? 'right' : 'left')
+  const end = getNodeCenter(to, leftToRight ? 'left' : 'right')
+  return reportArrow(start.x + (leftToRight ? 4 : -4), start.y, end.x + (leftToRight ? -4 : 4), end.y)
+}
+
 function renderTechnicalServiceSvg(metadata = {}) {
-  const width = 900
-  const height = 560
-  const caption = metadata.caption || '图4-1 本项目技术服务工作流程'
-  const phases = [
-    ['进场准备阶段', ['中标通知书', '入驻现场', '初期资料整理'], '进场准备完成'],
-    ['场地调查阶段', ['水文地质勘察', '调查实施方案', '采样检测', '结果分析'], '场地调查报告'],
-    ['风险评估阶段', ['土地利用方式', '关注污染物', '健康风险计算'], '风险评估报告'],
-    ['工程可研阶段', ['工艺筛选', '技术路线', '投资估算'], '可研报告']
-  ]
+  const layout = TECHNICAL_SERVICE_REPORT_LAYOUT
+  const caption = metadata.caption || layout.caption
+  const nodeById = Object.fromEntries(layout.nodes.map((item) => [item.id, item]))
+  const colorByStage = Object.fromEntries(layout.stages.map((stage) => [stage.id, stage.color]))
   const parts = []
-  phases.forEach((phase, index) => {
-    const x = 40 + index * 215
-    parts.push(rect({ x, y: 42, width: 178, height: 390, dashed: true, strokeWidth: 1.2 }))
-    parts.push(text(phase[0], x + 89, 70, { size: 16, bold: true }))
-    phase[1].forEach((label, stepIndex) => parts.push(node({ label, x: x + 24, y: 105 + stepIndex * 62, width: 130, height: 38 })))
-    parts.push(node({ label: phase[2], x: x + 24, y: 366, width: 130, height: 42 }))
-    if (index < phases.length - 1) parts.push(arrow(x + 178, 240, x + 212, 240))
+
+  layout.stages.forEach((stage) => {
+    parts.push(rect({
+      x: stage.x,
+      y: stage.y,
+      width: stage.width,
+      height: stage.height,
+      fill: '#ffffff',
+      stroke: layout.stageStroke,
+      strokeWidth: 1.8,
+      dashed: true,
+      dashArray: layout.stageDashArray
+    }))
+    parts.push(renderVerticalLabel(stage.label, stage.labelX, stage.labelY, stage.label.length > 10 ? 16 : 18))
   })
-  parts.push(text(caption, width / 2, 500, { size: 18, bold: true }))
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs><marker id="arrow-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="${STROKE}"/></marker></defs><rect width="${width}" height="${height}" fill="#fff"/><g>${parts.join('')}</g></svg>`
+
+  layout.nodes.forEach((item) => {
+    parts.push(node({
+      ...item,
+      fill: colorByStage[item.stage] || '#ffffff',
+      stroke: '#333333',
+      textSize: item.small ? 15 : 16,
+      maxChars: item.small ? 10 : 12
+    }))
+  })
+
+  layout.arrows.forEach(([fromId, toId]) => {
+    const from = nodeById[fromId]
+    const to = nodeById[toId]
+    if (from && to) parts.push(smartArrow(from, to))
+  })
+
+  parts.push(text(caption, layout.width / 2, layout.captionY, { size: 20, bold: true }))
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${layout.width}" height="${layout.height}" viewBox="0 0 ${layout.width} ${layout.height}" role="img" aria-label="${escapeXml(caption)}">
+  <rect x="0" y="0" width="${layout.width}" height="${layout.height}" fill="#ffffff"/>
+  <g>
+    ${parts.join('\n    ')}
+  </g>
+</svg>`
 }
 
 function renderProjectOrgSvg(metadata = {}) {
@@ -148,7 +245,7 @@ function renderProjectOrgSvg(metadata = {}) {
 
 export function renderReportSvg(templateType, input, metadata = {}) {
   if (templateType === 'site-survey' || templateType === '资料收集与踏勘流程图') return renderSiteSurveySvg(metadata)
-  if (templateType === 'technical-service') return renderTechnicalServiceSvg(metadata)
+  if (templateType === 'technical-service' || templateType === '技术服务总体流程图') return renderTechnicalServiceSvg(metadata)
   if (templateType === 'project-org') return renderProjectOrgSvg(metadata)
   return ''
 }
