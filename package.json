@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "canvg": "file:vendor/canvg",
     "react": "latest",
     "react-dom": "latest",
     "mermaid": "latest",

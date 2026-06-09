@@ -1,3 +1,4 @@
+import { Canvg } from 'canvg'
 import { fileNameFromTitle } from './fileName.js'
 import { downloadBlob } from './exportSvg.js'
 
@@ -7,6 +8,7 @@ const PNG_MIME_TYPE = 'image/png'
 const DEFAULT_WIDTH = 1200
 const DEFAULT_HEIGHT = 800
 const DEFAULT_SCALE = 3
+const EXPORT_ERROR_MESSAGE = '当前图形包含浏览器无法栅格化的内容。建议下载 SVG 或 PPTX 可编辑版。'
 
 function parseLength(value) {
   if (!value || String(value).trim().endsWith('%')) return 0
@@ -64,6 +66,49 @@ function getSvgSize(sourceSvg, clonedSvg) {
   }
 }
 
+function removeExternalImages(clonedSvg) {
+  clonedSvg.querySelectorAll('image').forEach((image) => {
+    const href = image.getAttribute('href')
+      || image.getAttribute('xlink:href')
+      || image.getAttributeNS(XLINK_NAMESPACE, 'href')
+
+    if (/^https?:\/\//i.test(String(href || '').trim())) {
+      image.remove()
+    }
+  })
+}
+
+function sanitizeStyleText(styleText) {
+  return String(styleText || '')
+    .replace(/@import\s+(?:url\()?['"]?https?:\/\/[^;]+;?/gi, '')
+    .replace(/@font-face\s*{[^}]*url\(\s*['"]?https?:\/\/[^}]*}/gi, '')
+}
+
+function sanitizeSvgForPng(clonedSvg) {
+  removeExternalImages(clonedSvg)
+
+  clonedSvg.querySelectorAll('style').forEach((styleElement) => {
+    styleElement.textContent = sanitizeStyleText(styleElement.textContent)
+  })
+
+  clonedSvg.querySelectorAll('link[href^="http"], link[href^="//"]').forEach((linkElement) => {
+    linkElement.remove()
+  })
+
+  console.log('SVG sanitized')
+}
+
+function ensureLightBackground(clonedSvg, width, height) {
+  const background = clonedSvg.ownerDocument.createElementNS(SVG_NAMESPACE, 'rect')
+  background.setAttribute('x', '0')
+  background.setAttribute('y', '0')
+  background.setAttribute('width', String(width))
+  background.setAttribute('height', String(height))
+  background.setAttribute('fill', '#ffffff')
+  background.setAttribute('data-flowcraft-export-background', 'true')
+  clonedSvg.insertBefore(background, clonedSvg.firstChild)
+}
+
 function prepareSvgForExport(svg) {
   const sourceSvg = getSvgElement(svg)
   const clonedSvg = sourceSvg.cloneNode(true)
@@ -80,6 +125,9 @@ function prepareSvgForExport(svg) {
   if (!clonedSvg.getAttribute('viewBox')) {
     clonedSvg.setAttribute('viewBox', `0 0 ${width} ${height}`)
   }
+
+  sanitizeSvgForPng(clonedSvg)
+  ensureLightBackground(clonedSvg, width, height)
 
   const markup = new XMLSerializer().serializeToString(clonedSvg)
   console.log('SVG serialized')
@@ -101,54 +149,21 @@ function createExportCanvas(width, height, scale) {
 
   context.fillStyle = '#ffffff'
   context.fillRect(0, 0, canvas.width, canvas.height)
+  context.scale(scale, scale)
 
   return { canvas, context }
 }
 
-function loadImage(url) {
-  return new Promise((resolve, reject) => {
-    const image = new Image()
-    const timeout = window.setTimeout(() => {
-      image.onload = null
-      image.onerror = null
-      reject(new Error('SVG image load timed out'))
-    }, 8000)
-
-    image.onload = () => {
-      window.clearTimeout(timeout)
-      console.log('image loaded')
-      resolve(image)
-    }
-    image.onerror = () => {
-      window.clearTimeout(timeout)
-      reject(new Error('SVG image load failed'))
-    }
-    image.src = url
-  })
-}
-
-function dataUrlToBlob(dataUrl) {
-  const [header, data] = dataUrl.split(',')
-  const mimeType = header.match(/data:(.*?);/)?.[1] || PNG_MIME_TYPE
-  const binary = atob(data)
-  const bytes = new Uint8Array(binary.length)
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index)
-  }
-  return new Blob([bytes], { type: mimeType })
-}
-
-function canvasDataUrlToPngBlob(canvas) {
-  return dataUrlToBlob(canvas.toDataURL(PNG_MIME_TYPE, 1))
-}
-
 function canvasToPngBlob(canvas) {
-  if (!canvas.toBlob) return Promise.resolve(canvasDataUrlToPngBlob(canvas))
-
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
-      resolve(blob || canvasDataUrlToPngBlob(canvas))
-    }, PNG_MIME_TYPE, 1)
+      if (!blob) {
+        reject(new Error(EXPORT_ERROR_MESSAGE))
+        return
+      }
+
+      resolve(blob)
+    }, PNG_MIME_TYPE)
   })
 }
 
@@ -157,7 +172,7 @@ function assertPngBlob(blob) {
   console.log('png blob type', blob?.type)
 
   if (!(blob instanceof Blob)) {
-    throw new Error('PNG export did not create a Blob')
+    throw new Error(EXPORT_ERROR_MESSAGE)
   }
 
   if (blob.type !== PNG_MIME_TYPE) {
@@ -170,25 +185,32 @@ function pngFileName(title) {
   return fileName.toLowerCase().endsWith('.png') ? fileName : `${fileName}.png`
 }
 
+async function renderSvgToCanvas(markup, context) {
+  console.log('canvg render started')
+  const renderer = await Canvg.from(context, markup, {
+    ignoreAnimation: true,
+    ignoreMouse: true
+  })
+  await renderer.render()
+  console.log('canvg render completed')
+}
+
 export async function downloadPng(svg, title = 'flowcraft-diagram', scale = DEFAULT_SCALE) {
   const exportScale = Math.max(1, Number(scale) || DEFAULT_SCALE)
-  const { width, height, markup } = prepareSvgForExport(svg)
-  const svgBlob = new Blob([markup], { type: 'image/svg+xml;charset=utf-8' })
-  const url = URL.createObjectURL(svgBlob)
 
   try {
-    const image = await loadImage(url)
+    const { width, height, markup } = prepareSvgForExport(svg)
     const { canvas, context } = createExportCanvas(width, height, exportScale)
 
-    context.drawImage(image, 0, 0, canvas.width, canvas.height)
-    console.log('canvas drawn')
+    await renderSvgToCanvas(markup, context)
 
     const pngBlob = await canvasToPngBlob(canvas)
     assertPngBlob(pngBlob)
 
     downloadBlob(pngBlob, pngFileName(title))
     console.log('png download triggered')
-  } finally {
-    URL.revokeObjectURL(url)
+  } catch (error) {
+    console.error('PNG export failed in canvg pipeline', error)
+    throw new Error(EXPORT_ERROR_MESSAGE)
   }
 }

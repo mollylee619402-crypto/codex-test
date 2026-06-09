@@ -197,7 +197,7 @@ function App() {
       console.error('PNG export failed', error)
       const message = error?.message || '未知错误'
       setPngButtonLabel(`PNG 导出失败：${message}`)
-      showFeedback(`PNG 导出失败，请点击下载 SVG，或使用 PPTX 可编辑版。（原因：${message}）`, 6200)
+      showFeedback(`PNG 导出失败：${message}`, 6200)
     } finally {
       setIsPngExporting(false)
     }
