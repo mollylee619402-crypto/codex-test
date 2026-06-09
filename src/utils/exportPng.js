@@ -15,7 +15,10 @@ function parseLength(value) {
 function getSvgElement(svg) {
   if (!svg) throw new Error('SVG is empty')
 
-  if (typeof SVGElement !== 'undefined' && svg instanceof SVGElement) return svg
+  if (typeof SVGElement !== 'undefined' && svg instanceof SVGElement) {
+    console.log('SVG found')
+    return svg
+  }
 
   if (typeof svg === 'string') {
     const documentFragment = new DOMParser().parseFromString(svg, 'image/svg+xml')
@@ -24,6 +27,7 @@ function getSvgElement(svg) {
 
     const svgElement = documentFragment.querySelector('svg')
     if (!svgElement) throw new Error('No SVG element found')
+    console.log('SVG found')
     return svgElement
   }
 
@@ -75,18 +79,34 @@ function prepareSvgForExport(svg) {
     clonedSvg.setAttribute('viewBox', `0 0 ${width} ${height}`)
   }
 
+  const markup = new XMLSerializer().serializeToString(clonedSvg)
+  console.log('SVG serialized')
+
   return {
     width,
     height,
-    markup: new XMLSerializer().serializeToString(clonedSvg)
+    markup
   }
 }
 
 function loadImage(url) {
   return new Promise((resolve, reject) => {
     const image = new Image()
-    image.onload = () => resolve(image)
-    image.onerror = () => reject(new Error('SVG image load failed'))
+    const timeout = window.setTimeout(() => {
+      image.onload = null
+      image.onerror = null
+      reject(new Error('SVG image load timed out'))
+    }, 8000)
+
+    image.onload = () => {
+      window.clearTimeout(timeout)
+      console.log('image loaded')
+      resolve(image)
+    }
+    image.onerror = () => {
+      window.clearTimeout(timeout)
+      reject(new Error('SVG image load failed'))
+    }
     image.src = url
   })
 }
@@ -131,9 +151,12 @@ export async function downloadPng(svg, title = 'flowcraft-diagram', scale = DEFA
     context.fillStyle = '#ffffff'
     context.fillRect(0, 0, canvas.width, canvas.height)
     context.drawImage(image, 0, 0, canvas.width, canvas.height)
+    console.log('canvas drawn')
 
     const pngBlob = await canvasToPngBlob(canvas)
+    console.log('blob created')
     downloadBlob(pngBlob, fileNameFromTitle(title, 'png'))
+    console.log('download triggered')
   } finally {
     URL.revokeObjectURL(url)
   }
