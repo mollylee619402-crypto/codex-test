@@ -194,13 +194,6 @@ function drawSiteSurveyReport(slide, pptx, metadata) {
     line: { color: '111111', width: 1 }
   })
   addReportText(slide, group.label, toX(group.x), toY(group.y), toW(group.width), toH(group.titleHeight), { fontSize: 11, bold: true })
-  slide.addShape(pptx.ShapeType.line, {
-    x: toX(group.x),
-    y: toY(group.y + group.titleHeight),
-    w: toW(group.width),
-    h: 0,
-    line: { color: '111111', width: 0.75 }
-  })
   group.children.forEach((child) => {
     addReportNode(slide, pptx, child.label, toX(child.x), toY(child.y), toW(child.width), toH(child.height), { fontSize: 11 })
   })

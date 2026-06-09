@@ -1,6 +1,6 @@
 import { SITE_SURVEY_REPORT_LAYOUT } from './reportDiagramTemplates.js'
 
-const FONT_FAMILY = 'serif'
+const FONT_FAMILY = "SimSun, 'Songti SC', 'Microsoft YaHei', serif"
 const TEXT_FILL = '#111111'
 const STROKE = '#111111'
 
@@ -25,8 +25,8 @@ function rect({ x, y, width, height, dashed = false, fill = '#ffffff', stroke = 
   return `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"${dash}/>`
 }
 
-function node({ label, x, y, width, height, dashed = false }) {
-  return `<g>${rect({ x, y, width, height, dashed })}${text(label, x + width / 2, y + height / 2, { size: 18 })}</g>`
+function node({ label, x, y, width, height, dashed = false, textSize = 18 }) {
+  return `<g>${rect({ x, y, width, height, dashed })}${text(label, x + width / 2, y + height / 2, { size: textSize })}</g>`
 }
 
 function arrow(x1, y1, x2, y2) {
@@ -64,16 +64,15 @@ function renderSiteSurveySvg(metadata = {}) {
   const parts = []
 
   layout.nodes.slice(0, 4).forEach((item) => {
-    parts.push(node({ ...item, x: nodeBox.x, width: nodeBox.width, height: nodeBox.height }))
+    parts.push(node({ ...item, x: nodeBox.x, width: nodeBox.width, height: nodeBox.height, textSize: 16 }))
   })
 
   parts.push(rect({ x: group.x, y: group.y, width: group.width, height: group.height, strokeWidth: 1.3 }))
-  parts.push(text(group.label, group.x + group.width / 2, group.y + group.titleHeight / 2, { size: 18, bold: true }))
-  parts.push(`<line x1="${group.x}" y1="${group.y + group.titleHeight}" x2="${group.x + group.width}" y2="${group.y + group.titleHeight}" stroke="${STROKE}" stroke-width="1.1"/>`)
-  group.children.forEach((child) => parts.push(node(child)))
+  parts.push(text(group.label, group.x + group.width / 2, group.y + group.titleHeight / 2, { size: 17, bold: true }))
+  group.children.forEach((child) => parts.push(node({ ...child, textSize: 16 })))
 
   layout.nodes.slice(4).forEach((item) => {
-    parts.push(node({ ...item, x: nodeBox.x, width: nodeBox.width, height: nodeBox.height }))
+    parts.push(node({ ...item, x: nodeBox.x, width: nodeBox.width, height: nodeBox.height, textSize: 16 }))
   })
 
   const flowStops = [
@@ -92,7 +91,7 @@ function renderSiteSurveySvg(metadata = {}) {
   })
 
   const caption = metadata.caption || layout.caption
-  parts.push(text(caption, layout.width / 2, layout.captionY, { size: 20, bold: true }))
+  parts.push(text(caption, layout.width / 2, layout.captionY, { size: 18, bold: true }))
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${layout.width}" height="${layout.height}" viewBox="0 0 ${layout.width} ${layout.height}" role="img" aria-label="${escapeXml(caption)}">
   <rect x="0" y="0" width="${layout.width}" height="${layout.height}" fill="#ffffff"/>
