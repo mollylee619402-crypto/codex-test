@@ -20,13 +20,14 @@ function text(label, x, y, options = {}) {
   return `<text x="${x}" y="${y}" text-anchor="${anchor}" dominant-baseline="middle" font-family="${FONT_FAMILY}" font-size="${size}" fill="${TEXT_FILL}"${weight}>${escapeXml(label)}</text>`
 }
 
-function rect({ x, y, width, height, dashed = false, fill = '#ffffff', stroke = STROKE, strokeWidth = 1.4 }) {
-  const dash = dashed ? ' stroke-dasharray="7 5"' : ''
+function rect({ x, y, width, height, dashed = false, fill = '#ffffff', stroke = STROKE, strokeWidth = 1.4, dashArray = '7 5' }) {
+  const dash = dashed ? ` stroke-dasharray="${dashArray}"` : ''
   return `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"${dash}/>`
 }
 
 function node({ label, x, y, width, height, dashed = false, textSize = 18 }) {
-  return `<g>${rect({ x, y, width, height, dashed })}${text(label, x + width / 2, y + height / 2, { size: textSize })}</g>`
+  const strokeWidth = dashed ? 1.3 : 1.4
+  return `<g>${rect({ x, y, width, height, dashed, strokeWidth, dashArray: '6 4' })}${text(label, x + width / 2, y + height / 2, { size: textSize })}</g>`
 }
 
 function arrow(x1, y1, x2, y2) {
