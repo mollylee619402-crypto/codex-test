@@ -112,13 +112,15 @@ function drawTechnicalService(slide, pptx) {
   })
 }
 
-function drawOrg(slide, pptx) {
+function drawOrg(slide, pptx, slideSize = { width: 13.333, height: 10.05 }) {
   const layout = ORGANIZATION_REPORT_LAYOUT
-  const slideWidth = 13.333
-  const slideHeight = 10.05
-  const scale = Math.min(12.65 / layout.width, 9.45 / layout.height)
+  const slideWidth = slideSize.width
+  const slideHeight = slideSize.height
+  const marginX = Math.min(0.45, slideWidth * 0.04)
+  const marginY = Math.min(0.22, slideHeight * 0.04)
+  const scale = Math.min((slideWidth - marginX * 2) / layout.width, (slideHeight - marginY * 2) / layout.height)
   const offsetX = (slideWidth - layout.width * scale) / 2
-  const offsetY = 0.16
+  const offsetY = (slideHeight - layout.height * scale) / 2
   const toX = (value) => offsetX + value * scale
   const toY = (value) => offsetY + value * scale
   const toW = (value) => value * scale
@@ -266,11 +268,13 @@ function addReportPolylineArrow(slide, pptx, points) {
   })
 }
 
-function drawSiteSurveyReport(slide, pptx, metadata) {
+function drawSiteSurveyReport(slide, pptx, metadata, slideSize = { width: 13.333, height: 7.5 }) {
   const layout = SITE_SURVEY_REPORT_LAYOUT
-  const scale = 6.8 / layout.height
-  const offsetX = (13.333 - layout.width * scale) / 2
-  const offsetY = 0.18
+  const marginX = Math.min(0.6, slideSize.width * 0.06)
+  const marginY = Math.min(0.25, slideSize.height * 0.06)
+  const scale = Math.min((slideSize.width - marginX * 2) / layout.width, (slideSize.height - marginY * 2) / layout.height)
+  const offsetX = (slideSize.width - layout.width * scale) / 2
+  const offsetY = (slideSize.height - layout.height * scale) / 2
   const toX = (value) => offsetX + value * scale
   const toY = (value) => offsetY + value * scale
   const toW = (value) => value * scale
@@ -354,10 +358,10 @@ function addVerticalReportLabel(slide, label, x, y, fontSize = 11) {
   })
 }
 
-function drawTechnicalServiceReport(slide, pptx, metadata) {
+function drawTechnicalServiceReport(slide, pptx, metadata, slideSize = { width: 10, height: 19 }) {
   const layout = TECHNICAL_SERVICE_REPORT_LAYOUT
-  const slideWidth = 10
-  const slideHeight = 19
+  const slideWidth = slideSize.width
+  const slideHeight = slideSize.height
   const scale = Math.min(slideWidth / layout.width, slideHeight / layout.height)
   const offsetX = (slideWidth - layout.width * scale) / 2
   const offsetY = (slideHeight - layout.height * scale) / 2
@@ -444,21 +448,23 @@ function addInfoSlide(slide, metadata, summary, isTallLayout = false) {
   slide.addText(text, { x: 0.75, y: 1.0, w: width - 0.25, h: textHeight, fontFace: 'Microsoft YaHei', fontSize: 12, color: '334155', breakLine: false, fit: 'shrink', valign: 'top', margin: 0.1, bullet: false })
 }
 
+function getPptxSlideSize(reportType, preset) {
+  if (preset.pptxLayout) return { ...preset.pptxLayout }
+  if (reportType === 'technical-service') return { name: 'FLOWCRAFT_TALL', width: 10, height: 19 }
+  if (reportType === 'organization') return { name: 'FLOWCRAFT_ORG', width: 13.333, height: 10.05 }
+  return { name: 'LAYOUT_WIDE', width: 13.333, height: 7.5, builtin: true }
+}
+
 export async function downloadEditablePptx({ mermaidCode, metadata, summary, diagramType, exportSize = 'word-page' }) {
   const pptx = new pptxgen()
   const reportType = normalizeReportTemplateType(diagramType)
   const preset = getExportSizePreset(exportSize)
-  if (reportType === 'technical-service') {
-    pptx.defineLayout({ name: 'FLOWCRAFT_TALL', width: 10, height: 19 })
-    pptx.layout = 'FLOWCRAFT_TALL'
-  } else if (reportType === 'organization') {
-    pptx.defineLayout({ name: 'FLOWCRAFT_ORG', width: 13.333, height: 10.05 })
-    pptx.layout = 'FLOWCRAFT_ORG'
-  } else if (preset.pptxLayout) {
-    pptx.defineLayout(preset.pptxLayout)
-    pptx.layout = preset.pptxLayout.name
+  const slideSize = getPptxSlideSize(reportType, preset)
+  if (slideSize.builtin) {
+    pptx.layout = slideSize.name
   } else {
-    pptx.layout = 'LAYOUT_WIDE'
+    pptx.defineLayout({ name: slideSize.name, width: slideSize.width, height: slideSize.height })
+    pptx.layout = slideSize.name
   }
   pptx.author = 'FlowCraft'
   pptx.subject = '环保工程流程图与组织架构图'
@@ -470,11 +476,11 @@ export async function downloadEditablePptx({ mermaidCode, metadata, summary, dia
   slide.background = { color: 'FFFFFF' }
 
   if (reportType === 'site-survey') {
-    drawSiteSurveyReport(slide, pptx, metadata)
+    drawSiteSurveyReport(slide, pptx, metadata, slideSize)
   } else if (reportType === 'technical-service') {
-    drawTechnicalServiceReport(slide, pptx, metadata)
+    drawTechnicalServiceReport(slide, pptx, metadata, slideSize)
   } else if (reportType === 'organization') {
-    drawOrg(slide, pptx)
+    drawOrg(slide, pptx, slideSize)
   } else {
     slide.addText(metadata.title, { x: 0.45, y: 0.25, w: 12.4, h: 0.35, fontFace: 'Microsoft YaHei', fontSize: 18, bold: true, color: '17324D', align: 'center' })
 
@@ -482,7 +488,7 @@ export async function downloadEditablePptx({ mermaidCode, metadata, summary, dia
 
     slide.addText(metadata.caption, { x: 0.45, y: 6.55, w: 12.4, h: 0.3, fontFace: 'Microsoft YaHei', fontSize: 12, bold: true, color: '334155', align: 'center' })
   }
-  addInfoSlide(pptx.addSlide(), metadata, summary, reportType === 'technical-service')
+  addInfoSlide(pptx.addSlide(), metadata, summary, reportType === 'technical-service' && slideSize.height > slideSize.width)
 
   await pptx.writeFile({ fileName: fileNameFromTitle(metadata.title, 'pptx') })
 }

@@ -1,6 +1,7 @@
 import { Canvg } from 'canvg'
 import { fileNameFromTitle } from './fileName.js'
 import { downloadBlob } from './exportSvg.js'
+import { adaptSvgElementForExport } from './svgExportAdapter.js'
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
 const XLINK_NAMESPACE = 'http://www.w3.org/1999/xlink'
@@ -235,6 +236,77 @@ function ensureLightBackground(clonedSvg, width, height) {
 }
 
 
+function collectReportSvgForbiddenFindings(clonedSvg) {
+  const findings = []
+  const forbiddenTags = new Set(['foreignobject', 'script', 'iframe', 'canvas', 'video', 'audio', 'image', 'link', 'style', 'marker', 'path'])
+  const forbiddenAttributeNames = new Set(['class', 'marker-start', 'marker-mid', 'marker-end'])
+  const externalValueRules = [
+    { name: 'external-url()', pattern: /url\(\s*['"]?(?:https?:)?\/\//i },
+    { name: 'external-href', pattern: /^(?:https?:)?\/\//i },
+    { name: 'css-import', pattern: /@import/i },
+    { name: 'font-face', pattern: /@font-face/i }
+  ]
+
+  clonedSvg.querySelectorAll('*').forEach((element) => {
+    const tag = element.tagName
+    const normalizedTag = String(tag || '').toLowerCase()
+    if (forbiddenTags.has(normalizedTag)) {
+      findings.push({ tag, attribute: null, value: element.outerHTML.slice(0, 240), rule: `forbidden-tag:${normalizedTag}` })
+    }
+
+    Array.from(element.attributes || []).forEach((attribute) => {
+      const attrName = attribute.name
+      const attrValue = attribute.value || ''
+      const normalizedAttrName = attrName.toLowerCase()
+
+      if (forbiddenAttributeNames.has(normalizedAttrName)) {
+        findings.push({ tag, attribute: attrName, value: attrValue, rule: `forbidden-attribute:${normalizedAttrName}` })
+      }
+
+      if (normalizedAttrName === 'href' || normalizedAttrName === 'xlink:href' || normalizedAttrName === 'style') {
+        externalValueRules.forEach((rule) => {
+          if (rule.pattern.test(attrValue)) findings.push({ tag, attribute: attrName, value: attrValue, rule: rule.name })
+        })
+      }
+    })
+  })
+
+  const serialized = new XMLSerializer().serializeToString(clonedSvg)
+  ;[
+    { name: 'serialized-css-import', pattern: /@import[^<;]*/ig },
+    { name: 'serialized-font-face', pattern: /@font-face[^<]*/ig },
+    { name: 'serialized-url-http', pattern: /url\(\s*['"]?https?:\/\/[^)]*/ig }
+  ].forEach((rule) => {
+    const matches = serialized.match(rule.pattern) || []
+    matches.forEach((match) => findings.push({ tag: 'serialized-svg', attribute: null, value: match.slice(0, 240), rule: rule.name }))
+  })
+
+  Array.from(serialized.matchAll(/https?:\/\//ig)).forEach((match) => {
+    const prefix = serialized.slice(Math.max(0, match.index - 20), match.index)
+    if (/xmlns(?::xlink)?="$/i.test(prefix)) return
+    findings.push({ tag: 'serialized-svg', attribute: null, value: serialized.slice(match.index, match.index + 240), rule: 'serialized-http-url-outside-xmlns' })
+  })
+
+  return findings
+}
+
+function logReportSvgForbiddenFindings(findings) {
+  if (!findings.length) {
+    console.log('[FlowCraft][PNG] 是否检测到禁止元素', false)
+    return
+  }
+
+  console.warn('[FlowCraft][PNG] 是否检测到禁止元素', true)
+  findings.forEach((finding, index) => {
+    console.warn(`[FlowCraft][PNG] 报告版 SVG 禁止项 #${index + 1}`, {
+      命中的标签: finding.tag,
+      命中的属性: finding.attribute,
+      命中的内容: finding.value,
+      命中的正则规则: finding.rule
+    })
+  })
+}
+
 function validateReportSvgForPng(clonedSvg) {
   if (!clonedSvg) throw new Error('PNG 导出失败：未检测到报告版 SVG')
   if (!clonedSvg.getAttribute('width') || !clonedSvg.getAttribute('height') || !clonedSvg.getAttribute('viewBox')) {
@@ -243,13 +315,12 @@ function validateReportSvgForPng(clonedSvg) {
   if (clonedSvg.querySelectorAll('text').length === 0) {
     throw new Error('PNG 导出失败：报告版 SVG 未检测到文字节点')
   }
-  const forbidden = clonedSvg.querySelector('foreignObject, script, iframe, canvas, video, audio, image[href^="http"], image[xlink\\:href^="http"]')
-  if (forbidden) {
-    throw new Error(`PNG 导出失败：报告版 SVG 包含不支持的 ${forbidden.tagName} 元素`)
-  }
-  const serialized = new XMLSerializer().serializeToString(clonedSvg)
-  if (/@import|@font-face|https?:\/\//i.test(serialized)) {
-    throw new Error('PNG 导出失败：报告版 SVG 包含外部资源')
+
+  const findings = collectReportSvgForbiddenFindings(clonedSvg)
+  logReportSvgForbiddenFindings(findings)
+  if (findings.length) {
+    const first = findings[0]
+    throw new Error(`PNG 导出失败：报告版 SVG 命中禁止项（标签：${first.tag}，属性：${first.attribute || '无'}，规则：${first.rule}）`)
   }
 }
 
@@ -262,13 +333,31 @@ function prepareSvgForExport(svg, options = {}) {
     clonedSvg.setAttribute('xmlns:xlink', XLINK_NAMESPACE)
   }
 
-  const { width, height } = getSvgSize(sourceSvg, clonedSvg)
-  clonedSvg.setAttribute('width', String(width))
-  clonedSvg.setAttribute('height', String(height))
+  const originalSize = getSvgSize(sourceSvg, clonedSvg)
+  clonedSvg.setAttribute('width', String(originalSize.width))
+  clonedSvg.setAttribute('height', String(originalSize.height))
 
   if (!clonedSvg.getAttribute('viewBox')) {
-    clonedSvg.setAttribute('viewBox', `0 0 ${width} ${height}`)
+    clonedSvg.setAttribute('viewBox', `0 0 ${originalSize.width} ${originalSize.height}`)
   }
+
+  const exportDimensions = options.exportDimensions || (options.targetWidth
+    ? {
+        width: Number(options.targetWidth),
+        height: Math.round(Number(options.targetWidth) * originalSize.height / originalSize.width),
+        fitCanvas: false,
+        presetName: options.exportSize
+      }
+    : { width: originalSize.width, height: originalSize.height, fitCanvas: false })
+  adaptSvgElementForExport(clonedSvg, exportDimensions)
+  const width = Math.ceil(exportDimensions.width || originalSize.width)
+  const height = Math.ceil(exportDimensions.height || originalSize.height)
+
+  console.log('[FlowCraft][PNG] 当前模板类型', options.templateType || 'unknown')
+  console.log('[FlowCraft][PNG] 是否报告版模板', Boolean(options.isReportSvg))
+  console.log('[FlowCraft][PNG] 使用的导出尺寸选项', options.exportSize || exportDimensions.presetName || '未指定')
+  console.log('[FlowCraft][PNG] 原始 SVG width / height', originalSize.width, originalSize.height)
+  console.log('[FlowCraft][PNG] 目标导出 width / height', width, height)
 
   if (options.isReportSvg) validateReportSvgForPng(clonedSvg)
   sanitizeSvgForPng(clonedSvg)
@@ -285,17 +374,16 @@ function prepareSvgForExport(svg, options = {}) {
   }
 }
 
-function createExportCanvas(width, height, scale) {
+function createExportCanvas(width, height) {
   const canvas = document.createElement('canvas')
-  canvas.width = Math.ceil(width * scale)
-  canvas.height = Math.ceil(height * scale)
+  canvas.width = Math.ceil(width)
+  canvas.height = Math.ceil(height)
 
   const context = canvas.getContext('2d')
   if (!context) throw new Error('Canvas 2D context is unavailable')
 
   context.fillStyle = '#ffffff'
   context.fillRect(0, 0, canvas.width, canvas.height)
-  context.scale(scale, scale)
 
   return { canvas, context }
 }
@@ -316,6 +404,7 @@ function canvasToPngBlob(canvas) {
 function assertPngBlob(blob) {
   console.log('png blob created')
   console.log('png blob type', blob?.type)
+  console.log('png blob size', blob?.size)
 
   if (!(blob instanceof Blob)) {
     throw new Error(EXPORT_ERROR_MESSAGE)
@@ -343,12 +432,10 @@ async function renderSvgToCanvas(markup, context) {
 
 export async function downloadPng(svg, title = 'flowcraft-diagram', scaleOrOptions = DEFAULT_SCALE) {
   const options = typeof scaleOrOptions === 'object' ? scaleOrOptions : { scale: scaleOrOptions }
-  const exportScale = Math.max(1, Number(options.scale) || DEFAULT_SCALE)
 
   try {
     const { width, height, markup } = prepareSvgForExport(svg, options)
-    const presetScale = options.targetWidth ? Math.max(exportScale, (Number(options.targetWidth) / width) * exportScale) : exportScale
-    const { canvas, context } = createExportCanvas(width, height, presetScale)
+    const { canvas, context } = createExportCanvas(width, height)
 
     await renderSvgToCanvas(markup, context)
 
