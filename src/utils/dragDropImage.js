@@ -1,4 +1,4 @@
-import { isSupportedImageFile } from './imageOcr.js'
+import { isSupportedImageFile } from './imageOcrSupport.js'
 
 export function getFirstSupportedDraggedImage(dataTransfer) {
   const files = Array.from(dataTransfer?.files || [])

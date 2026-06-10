@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getSupportedImageHint, isSupportedImageFile, recognizeImageText } from '../utils/imageOcr.js'
+import { getSupportedImageHint, isSupportedImageFile } from '../utils/imageOcrSupport.js'
 import { clipboardSupportsFiles, getImageFileFromClipboard, isEditablePasteTarget } from '../utils/clipboardImage.js'
 import { getFirstSupportedDraggedImage } from '../utils/dragDropImage.js'
 import { ocrToStructuredInput } from '../utils/ocrToStructuredInput.js'
@@ -155,6 +155,7 @@ function ImageImportPanel({ onApply }) {
     setStatus(isRetry ? '正在重新识别文字' : '正在识别文字')
 
     try {
+      const { recognizeImageText } = await import('../utils/imageOcr.js')
       const ocrResult = await recognizeImageText(file, {
         preprocessOptions,
         onPreprocess: ({ status: nextStatus, notes }) => {
