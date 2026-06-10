@@ -62,16 +62,56 @@ export function getReportTemplateExportBaseName(templateType, fallback = 'FlowCr
 }
 
 export const EXPORT_SIZE_PRESETS = {
-  'word-column': { label: 'Word 单栏宽度', targetWidth: 720, pptxLayout: { name: 'FLOWCRAFT_WORD_COLUMN', width: 6.2, height: 9.3 } },
-  'word-page': { label: 'Word 页面宽度', targetWidth: 1400, pptxLayout: { name: 'FLOWCRAFT_WORD_PAGE', width: 8.27, height: 11.69 } },
-  'a4-portrait': { label: 'A4 竖版', targetWidth: 1600, pptxLayout: { name: 'FLOWCRAFT_A4_PORTRAIT', width: 8.27, height: 11.69 } },
-  'a4-landscape': { label: 'A4 横版', targetWidth: 2200, pptxLayout: { name: 'FLOWCRAFT_A4_LANDSCAPE', width: 11.69, height: 8.27 } },
-  'ppt-16-9': { label: 'PPT 16:9', targetWidth: 1920, pptxLayout: { name: 'FLOWCRAFT_PPT_16_9', width: 13.333, height: 7.5 } },
-  original: { label: '原始尺寸', targetWidth: null, pptxLayout: null }
+  original: { label: '原始尺寸', targetWidth: null, targetHeight: null, fitCanvas: false, pptxLayout: null },
+  'word-column': { label: 'Word 单栏宽度', targetWidth: 1080, targetHeight: null, fitCanvas: false, pptxLayout: { name: 'FLOWCRAFT_WORD_COLUMN', width: 6.2, height: 9.3 } },
+  'word-page': { label: 'Word 页面宽度', targetWidth: 1800, targetHeight: null, fitCanvas: false, pptxLayout: { name: 'FLOWCRAFT_WORD_PAGE', width: 8.27, height: 11.69 } },
+  'a4-portrait': { label: 'A4 竖版', targetWidth: 1600, targetHeight: 2263, fitCanvas: true, pptxLayout: { name: 'FLOWCRAFT_A4_PORTRAIT', width: 8.27, height: 11.69 } },
+  'a4-landscape': { label: 'A4 横版', targetWidth: 2200, targetHeight: 1556, fitCanvas: true, pptxLayout: { name: 'FLOWCRAFT_A4_LANDSCAPE', width: 11.69, height: 8.27 } },
+  'ppt-16-9': { label: 'PPT 16:9', targetWidth: 1920, targetHeight: 1080, fitCanvas: true, pptxLayout: { name: 'FLOWCRAFT_PPT_16_9', width: 13.333, height: 7.5 } }
 }
 
 export function getExportSizePreset(value) {
   return EXPORT_SIZE_PRESETS[value] || EXPORT_SIZE_PRESETS['word-page']
+}
+
+function positiveNumber(value, fallback = 0) {
+  const parsed = Number.parseFloat(String(value ?? ''))
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+export function getExportDimensions(templateConfig, exportSizePreset = EXPORT_SIZE_PRESETS['word-page']) {
+  const preset = typeof exportSizePreset === 'string' ? getExportSizePreset(exportSizePreset) : (exportSizePreset || EXPORT_SIZE_PRESETS['word-page'])
+  const sourceCanvas = templateConfig?.canvas || templateConfig || {}
+  const originalWidth = positiveNumber(sourceCanvas.width, 1200)
+  const originalHeight = positiveNumber(sourceCanvas.height, 800)
+  const originalRatio = originalHeight / originalWidth
+
+  if (!preset.targetWidth) {
+    return {
+      width: Math.round(originalWidth),
+      height: Math.round(originalHeight),
+      scale: 1,
+      presetName: preset.label,
+      fitCanvas: false,
+      originalWidth: Math.round(originalWidth),
+      originalHeight: Math.round(originalHeight)
+    }
+  }
+
+  const width = positiveNumber(preset.targetWidth, originalWidth)
+  const height = preset.fitCanvas && preset.targetHeight
+    ? positiveNumber(preset.targetHeight, Math.round(width * originalRatio))
+    : Math.round(width * originalRatio)
+
+  return {
+    width: Math.round(width),
+    height: Math.round(height),
+    scale: width / originalWidth,
+    presetName: preset.label,
+    fitCanvas: Boolean(preset.fitCanvas),
+    originalWidth: Math.round(originalWidth),
+    originalHeight: Math.round(originalHeight)
+  }
 }
 
 export const SITE_SURVEY_REPORT_LAYOUT = {

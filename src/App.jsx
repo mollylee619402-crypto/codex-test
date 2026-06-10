@@ -8,7 +8,7 @@ import { downloadEditablePptx } from './utils/exportPptx'
 import { downloadPng } from './utils/exportPng'
 import { downloadMermaidSource, downloadSvg } from './utils/exportSvg'
 import { generateMermaid } from './utils/mermaidGenerator'
-import { getExportSizePreset, getReportTemplateConfig, getReportTemplateExportBaseName, isReportTemplate } from './utils/reportDiagramTemplates'
+import { getExportDimensions, getExportSizePreset, getReportTemplateConfig, getReportTemplateExportBaseName, isReportTemplate } from './utils/reportDiagramTemplates'
 import { renderReportSvg } from './utils/reportSvgRenderer'
 import { generatePrompt } from './utils/promptGenerator'
 import { generateReportMetadata, metadataText } from './utils/reportMetadataGenerator'
@@ -73,6 +73,9 @@ function App() {
   const isReportSvg = useMemo(() => isReportTemplate(diagramType), [diagramType])
   const reportConfig = useMemo(() => getReportTemplateConfig(diagramType), [diagramType])
   const exportPreset = useMemo(() => getExportSizePreset(exportSize), [exportSize])
+  const reportExportDimensions = useMemo(() => (
+    reportConfig ? getExportDimensions(reportConfig, exportPreset) : null
+  ), [reportConfig, exportPreset])
   const reportSvg = useMemo(() => (
     isReportSvg ? renderReportSvg(diagramType, input, { ...metadata, caption: reportConfig?.caption || metadata.caption }) : ''
   ), [diagramType, input, metadata, reportConfig, isReportSvg])
@@ -190,7 +193,11 @@ function App() {
       return
     }
     try {
-      downloadSvg(exportSvg, exportBaseName)
+      downloadSvg(exportSvg, exportBaseName, {
+        exportDimensions: isReportSvg ? reportExportDimensions : null,
+        targetWidth: exportPreset.targetWidth,
+        exportSize
+      })
       showFeedback('SVG 下载已开始')
     } catch (error) {
       showFeedback(`SVG 下载失败：${error?.message || '未检测到有效 SVG'}`)
@@ -210,7 +217,14 @@ function App() {
     showFeedback('正在导出 PNG...', 0)
 
     try {
-      await downloadPng(exportSvg, exportBaseName, { scale: 3, targetWidth: exportPreset.targetWidth, isReportSvg })
+      await downloadPng(exportSvg, exportBaseName, {
+        scale: 3,
+        targetWidth: exportPreset.targetWidth,
+        exportDimensions: isReportSvg ? reportExportDimensions : null,
+        exportSize,
+        templateType: diagramType,
+        isReportSvg
+      })
       setPngButtonLabel('PNG 下载已开始')
       showFeedback('PNG 下载已开始', 2600)
     } catch (error) {
