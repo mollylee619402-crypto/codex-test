@@ -1,6 +1,20 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getSupportedImageHint, isSupportedImageFile, recognizeImageText } from '../utils/imageOcr.js'
+import { clipboardSupportsFiles, getImageFileFromClipboard, isEditablePasteTarget } from '../utils/clipboardImage.js'
+import { getFirstSupportedDraggedImage } from '../utils/dragDropImage.js'
 import { ocrToStructuredInput } from '../utils/ocrToStructuredInput.js'
+
+const DEFAULT_PREPROCESS_OPTIONS = {
+  enhanceContrast: true,
+  grayscale: false,
+  autoCrop: true,
+  upscale: false,
+  useOriginal: false
+}
+
+function isPdfFile(file) {
+  return file?.type === 'application/pdf' || /\.pdf$/i.test(file?.name || '')
+}
 
 function ImageImportPanel({ onApply }) {
   const [file, setFile] = useState(null)
@@ -9,36 +23,127 @@ function ImageImportPanel({ onApply }) {
   const [progress, setProgress] = useState(0)
   const [resultText, setResultText] = useState('')
   const [isRecognizing, setIsRecognizing] = useState(false)
+  const [isDragActive, setIsDragActive] = useState(false)
+  const [isPointerInDropZone, setIsPointerInDropZone] = useState(false)
+  const [preprocessOptions, setPreprocessOptions] = useState(DEFAULT_PREPROCESS_OPTIONS)
+  const [preprocessNotes, setPreprocessNotes] = useState([])
   const fileInputRef = useRef(null)
+  const dropZoneRef = useRef(null)
+  const dragDepthRef = useRef(0)
 
   useEffect(() => () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl)
   }, [previewUrl])
 
-  const handleFileChange = (event) => {
-    const nextFile = event.target.files?.[0]
+  const resetFileInput = () => {
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const setImportedFile = useCallback((nextFile, sourceMessage) => {
     if (!nextFile) return
 
-    if (!isSupportedImageFile(nextFile)) {
-      setFile(null)
-      setResultText('')
-      setProgress(0)
-      setStatus(`图片格式不支持。${getSupportedImageHint()}`)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-      if (previewUrl) URL.revokeObjectURL(previewUrl)
-      setPreviewUrl('')
+    if (isPdfFile(nextFile)) {
+      setStatus('PDF 识别功能即将支持。当前建议先将 PDF 中的流程图截图后粘贴或上传。')
+      resetFileInput()
       return
     }
 
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    if (!isSupportedImageFile(nextFile)) {
+      setStatus('图片格式不支持，请上传 PNG、JPG、JPEG 或 WEBP。')
+      resetFileInput()
+      return
+    }
+
+    setPreviewUrl((currentUrl) => {
+      if (currentUrl) URL.revokeObjectURL(currentUrl)
+      return URL.createObjectURL(nextFile)
+    })
     setFile(nextFile)
-    setPreviewUrl(URL.createObjectURL(nextFile))
     setResultText('')
     setProgress(0)
-    setStatus('图片上传成功')
+    setPreprocessNotes([])
+    setStatus(file ? '已替换当前图片' : sourceMessage)
+    resetFileInput()
+  }, [file])
+
+  const handleFileChange = (event) => {
+    const nextFile = event.target.files?.[0]
+    if (!nextFile) return
+    setImportedFile(nextFile, '图片上传成功')
   }
 
-  const handleRecognize = async () => {
+  const handlePasteImage = useCallback((event, sourceMessage = '已粘贴图片') => {
+    if (!clipboardSupportsFiles(event)) {
+      setStatus('当前浏览器不支持图片粘贴，请改用上传方式。')
+      return false
+    }
+
+    const pastedFile = getImageFileFromClipboard(event)
+    if (!pastedFile) {
+      setStatus('未检测到图片，请复制图片后再粘贴。')
+      return false
+    }
+
+    event.preventDefault()
+    setImportedFile(pastedFile, sourceMessage)
+    if (file) setStatus('已替换当前图片')
+    else setStatus(sourceMessage)
+    return true
+  }, [file, setImportedFile])
+
+  useEffect(() => {
+    const handleDocumentPaste = (event) => {
+      if (event.defaultPrevented || !isPointerInDropZone || isEditablePasteTarget(event.target)) return
+      handlePasteImage(event)
+    }
+
+    document.addEventListener('paste', handleDocumentPaste)
+    return () => document.removeEventListener('paste', handleDocumentPaste)
+  }, [handlePasteImage, isPointerInDropZone])
+
+  const handleDropZonePaste = (event) => {
+    handlePasteImage(event)
+  }
+
+  const handleDragEnter = (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    dragDepthRef.current += 1
+    setIsDragActive(true)
+  }
+
+  const handleDragOver = (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = 'copy'
+    setIsDragActive(true)
+  }
+
+  const handleDragLeave = (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
+    if (dragDepthRef.current === 0) setIsDragActive(false)
+  }
+
+  const handleDrop = (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    dragDepthRef.current = 0
+    setIsDragActive(false)
+
+    const { file: droppedFile, multiple, unsupported } = getFirstSupportedDraggedImage(event.dataTransfer)
+    if (unsupported || !droppedFile) {
+      setStatus('图片格式不支持，请上传 PNG、JPG、JPEG 或 WEBP。')
+      return
+    }
+
+    setImportedFile(droppedFile, multiple ? '已载入第一张图片。' : '已拖拽导入图片')
+    if (file) setStatus('已替换当前图片')
+    else setStatus(multiple ? '已载入第一张图片。' : '已拖拽导入图片')
+  }
+
+  const handleRecognize = async (isRetry = false) => {
     if (!file) {
       setStatus(`请先上传图片。${getSupportedImageHint()}`)
       return
@@ -46,10 +151,16 @@ function ImageImportPanel({ onApply }) {
 
     setIsRecognizing(true)
     setProgress(0)
-    setStatus('正在识别文字')
+    setPreprocessNotes([])
+    setStatus(isRetry ? '正在重新识别文字' : '正在识别文字')
 
     try {
       const ocrResult = await recognizeImageText(file, {
+        preprocessOptions,
+        onPreprocess: ({ status: nextStatus, notes }) => {
+          setStatus(nextStatus || '正在预处理图片')
+          setPreprocessNotes(notes || [])
+        },
         onProgress: ({ status: nextStatus, progress: nextProgress }) => {
           setStatus(nextStatus || '正在识别文字')
           setProgress(nextProgress || 0)
@@ -57,16 +168,16 @@ function ImageImportPanel({ onApply }) {
       })
       const structuredResult = ocrToStructuredInput(ocrResult)
       if (!structuredResult.text.trim()) {
-        setResultText('')
-        setStatus('未识别到有效文字，请尝试上传更清晰的图片。')
+        if (!resultText.trim()) setResultText('')
+        setStatus('未识别到有效文字')
         return
       }
       setResultText(structuredResult.text)
-      setStatus('识别完成，请校对后应用到当前流程。')
+      setStatus(isRetry ? '识别结果已更新。' : '识别完成')
       setProgress(100)
     } catch (error) {
-      const message = error?.message || '请检查图片清晰度或稍后重试。'
-      setStatus(message.includes('初始化') ? message : `OCR 失败：${message}`)
+      const message = error?.message || '请检查图片清晰度'
+      setStatus(message.includes('初始化') ? message : 'OCR 失败，请检查图片清晰度')
     } finally {
       setIsRecognizing(false)
     }
@@ -78,17 +189,28 @@ function ImageImportPanel({ onApply }) {
       return
     }
     onApply(resultText.trim())
-    setStatus('已应用到当前流程')
+    setStatus('识别结果已应用到当前流程。')
   }
 
-  const handleClear = () => {
+  const handleRemoveImage = () => {
     setFile(null)
     setResultText('')
-    setStatus('识别结果已清空')
+    setStatus('已移除当前图片')
     setProgress(0)
+    setPreprocessNotes([])
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     setPreviewUrl('')
-    if (fileInputRef.current) fileInputRef.current.value = ''
+    resetFileInput()
+  }
+
+  const updatePreprocessOption = (key) => (event) => {
+    const checked = event.target.checked
+    setPreprocessOptions((current) => {
+      if (key === 'useOriginal') {
+        return { ...current, useOriginal: checked }
+      }
+      return { ...current, [key]: checked, useOriginal: checked ? false : current.useOriginal }
+    })
   }
 
   return (
@@ -102,15 +224,51 @@ function ImageImportPanel({ onApply }) {
         识别效果受图片清晰度、文字大小、遮挡、复杂连线和排版影响。建议上传清晰截图，识别后请人工校对。
       </p>
 
-      <label className="field-label image-upload-field">
-        上传流程图图片
+      <div
+        ref={dropZoneRef}
+        className={`image-drop-zone ${isDragActive ? 'is-drag-active' : ''}`}
+        role="button"
+        tabIndex={0}
+        onClick={() => fileInputRef.current?.click()}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            fileInputRef.current?.click()
+          }
+        }}
+        onPaste={handleDropZonePaste}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onMouseEnter={() => setIsPointerInDropZone(true)}
+        onMouseLeave={() => setIsPointerInDropZone(false)}
+      >
         <input
           ref={fileInputRef}
+          className="image-hidden-input"
           type="file"
-          accept="image/png,image/jpeg,image/jpg,image/webp,.png,.jpg,.jpeg,.webp"
+          accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf,.png,.jpg,.jpeg,.webp,.pdf"
           onChange={handleFileChange}
+          onClick={(event) => event.stopPropagation()}
         />
-      </label>
+        <strong>点击上传、拖拽图片到此处，或直接粘贴截图</strong>
+        <span>支持 PNG / JPG / JPEG / WEBP，建议上传清晰截图，识别后请人工校对。</span>
+        {file && <em>当前图片：{file.name || '未命名截图'}</em>}
+      </div>
+
+      <p className="pdf-import-tip">PDF 识别功能即将支持。当前建议先将 PDF 中的流程图截图后粘贴或上传。</p>
+
+      <div className="ocr-preprocess-panel" aria-label="OCR 前处理选项">
+        <strong>OCR 前处理</strong>
+        <div className="ocr-preprocess-options">
+          <label><input type="checkbox" checked={preprocessOptions.enhanceContrast && !preprocessOptions.useOriginal} onChange={updatePreprocessOption('enhanceContrast')} disabled={preprocessOptions.useOriginal} /> 自动增强对比度</label>
+          <label><input type="checkbox" checked={preprocessOptions.grayscale && !preprocessOptions.useOriginal} onChange={updatePreprocessOption('grayscale')} disabled={preprocessOptions.useOriginal} /> 灰度化</label>
+          <label><input type="checkbox" checked={preprocessOptions.autoCrop && !preprocessOptions.useOriginal} onChange={updatePreprocessOption('autoCrop')} disabled={preprocessOptions.useOriginal} /> 自动裁剪空白边</label>
+          <label><input type="checkbox" checked={preprocessOptions.upscale && !preprocessOptions.useOriginal} onChange={updatePreprocessOption('upscale')} disabled={preprocessOptions.useOriginal} /> 放大后识别</label>
+          <label><input type="checkbox" checked={preprocessOptions.useOriginal} onChange={updatePreprocessOption('useOriginal')} /> 使用原图识别</label>
+        </div>
+      </div>
 
       {previewUrl && (
         <div className="image-preview-box">
@@ -118,12 +276,19 @@ function ImageImportPanel({ onApply }) {
         </div>
       )}
 
+      {preprocessNotes.length > 0 && (
+        <div className="preprocess-note-list">
+          {preprocessNotes.map((note) => <span key={note}>{note}</span>)}
+        </div>
+      )}
+
       <div className="button-row compact image-import-actions">
-        <button type="button" className="primary" onClick={handleRecognize} disabled={!file || isRecognizing}>
+        <button type="button" className="primary" onClick={() => handleRecognize(false)} disabled={!file || isRecognizing}>
           {isRecognizing ? '正在识别…' : '开始识别'}
         </button>
+        <button type="button" onClick={() => handleRecognize(true)} disabled={!file || isRecognizing}>重新识别</button>
         <button type="button" onClick={handleApply} disabled={!resultText.trim() || isRecognizing}>应用到当前流程</button>
-        <button type="button" onClick={handleClear} disabled={isRecognizing}>清空识别结果</button>
+        <button type="button" onClick={handleRemoveImage} disabled={!file || isRecognizing}>移除当前图片</button>
       </div>
 
       {status && (
