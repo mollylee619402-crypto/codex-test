@@ -14,6 +14,9 @@ import { generatePrompt } from './utils/promptGenerator'
 import { generateReportMetadata, metadataText } from './utils/reportMetadataGenerator'
 import { DEFAULT_PROJECT_CONFIG, captionFromProjectConfig, createDefaultStructuredText, mergeProjectConfig } from './utils/projectConfigDefaults.js'
 import { parseStructuredInput, structuredContentToMermaidNodes } from './utils/structuredInputParser.js'
+import { buildProjectConfigPayload, downloadProjectConfigJson, serializeProjectConfig } from './utils/projectConfigExport.js'
+import { normalizeImportedProjectConfig, readProjectConfigFile } from './utils/projectConfigImport.js'
+import { deleteProjectConfigFromLibrary, readProjectConfigs, saveProjectConfigToLibrary } from './utils/projectConfigStorage.js'
 
 const STORAGE_KEY = 'flowcraft.templates'
 
@@ -58,6 +61,7 @@ function App() {
   const [summary, setSummary] = useState([])
   const [metadata, setMetadata] = useState(generateReportMetadata(DEFAULT_EXAMPLE, []))
   const [templates, setTemplates] = useState([])
+  const [projectConfigs, setProjectConfigs] = useState([])
   const [feedback, setFeedback] = useState('')
   const [currentSvg, setCurrentSvg] = useState('')
   const [isPngExporting, setIsPngExporting] = useState(false)
@@ -93,6 +97,20 @@ function App() {
     isReportSvg ? renderReportSvg(diagramType, input, displayMetadata, projectConfig, diagramContent) : ''
   ), [diagramType, input, displayMetadata, projectConfig, diagramContent, isReportSvg])
 
+  const currentProjectConfigPayload = useMemo(() => buildProjectConfigPayload({
+    templateType: diagramType,
+    projectConfig,
+    structuredInput,
+    diagramContent,
+    exportSizePreset: exportSize,
+    pngScale,
+    input,
+    outputPurpose,
+    style
+  }), [diagramType, projectConfig, structuredInput, diagramContent, exportSize, pngScale, input, outputPurpose, style])
+
+  const currentProjectConfigJson = useMemo(() => serializeProjectConfig(currentProjectConfigPayload), [currentProjectConfigPayload])
+
   const showFeedback = useCallback((message, duration = 1800) => {
     setFeedback(message)
     if (feedbackTimerRef.current) window.clearTimeout(feedbackTimerRef.current)
@@ -115,6 +133,12 @@ function App() {
 
   useEffect(() => {
     setTemplates(readTemplates())
+    try {
+      setProjectConfigs(readProjectConfigs())
+    } catch (error) {
+      setProjectConfigs([])
+      window.setTimeout(() => showFeedback(error?.message || '本地存储失败，请检查浏览器权限或空间', 3600), 0)
+    }
     const initialConfig = {
       diagramType: DEFAULT_EXAMPLE.diagramType,
       diagramTypeLabel: DIAGRAM_TYPES.find((type) => type.value === DEFAULT_EXAMPLE.diagramType)?.label || '资料收集与踏勘流程图',
@@ -197,6 +221,88 @@ function App() {
   const handleDeleteTemplate = (id) => {
     saveTemplates(templates.filter((template) => template.id !== id))
     showFeedback('模板已删除')
+  }
+
+
+  const applyProjectConfigPayload = (rawConfig, message = '项目配置已加载') => {
+    const normalized = normalizeImportedProjectConfig(rawConfig)
+    const nextTemplateType = normalized.templateType
+    const nextProjectConfig = mergeProjectConfig(DEFAULT_PROJECT_CONFIG, normalized.projectConfig)
+    const nextStructuredInput = normalized.structuredInput || createDefaultStructuredText(nextTemplateType)
+    const nextInput = normalized.input || `${nextProjectConfig.projectName}，${nextProjectConfig.figureTitle}`
+    const nextLabel = DIAGRAM_TYPES.find((type) => type.value === nextTemplateType)?.label || '基础版流程图'
+    const nextOutputPurpose = normalized.outputPurpose || nextProjectConfig.reportUse || outputPurpose
+    const nextStyle = normalized.style || style
+    const nextParsed = parseStructuredInput(nextStructuredInput, { templateType: nextTemplateType })
+
+    setInput(nextInput)
+    setDiagramType(nextTemplateType)
+    setOutputPurpose(nextOutputPurpose)
+    setStyle(nextStyle)
+    setProjectConfig(nextProjectConfig)
+    setStructuredInput(nextStructuredInput)
+    setExportSize(normalized.exportSettings.exportSizePreset)
+    setPngScale(normalized.exportSettings.pngScale)
+    generate(nextInput, { diagramType: nextTemplateType, diagramTypeLabel: nextLabel, outputPurpose: nextOutputPurpose, style: nextStyle }, { templateType: nextTemplateType, stages: nextParsed.stages })
+    showFeedback(message, 2600)
+  }
+
+  const handleSaveProjectConfig = () => {
+    try {
+      const result = saveProjectConfigToLibrary(currentProjectConfigPayload)
+      setProjectConfigs(result.configs)
+      showFeedback(result.mode === 'updated' ? '项目配置已保存（已更新同名配置）' : '项目配置已保存', 2600)
+    } catch (error) {
+      showFeedback(error?.message || '本地存储失败，请检查浏览器权限或空间', 4200)
+    }
+  }
+
+  const handleLoadProjectConfig = (config) => {
+    try {
+      applyProjectConfigPayload(config, '项目配置已加载')
+    } catch (error) {
+      showFeedback(error?.message || '项目配置加载失败，请检查配置内容', 4200)
+    }
+  }
+
+  const handleDeleteProjectConfig = (id) => {
+    try {
+      setProjectConfigs(deleteProjectConfigFromLibrary(id))
+      showFeedback('项目配置已删除')
+    } catch (error) {
+      showFeedback(error?.message || '本地存储失败，请检查浏览器权限或空间', 4200)
+    }
+  }
+
+  const handleExportCurrentProjectConfig = () => {
+    try {
+      downloadProjectConfigJson(currentProjectConfigPayload)
+      showFeedback('JSON 配置已导出')
+    } catch (error) {
+      showFeedback(`JSON 配置导出失败：${error?.message || '请检查浏览器下载权限'}`, 4200)
+    }
+  }
+
+  const handleExportProjectConfig = (config) => {
+    try {
+      downloadProjectConfigJson(config)
+      showFeedback('JSON 配置已导出')
+    } catch (error) {
+      showFeedback(`JSON 配置导出失败：${error?.message || '请检查浏览器下载权限'}`, 4200)
+    }
+  }
+
+  const handleCopyProjectConfigJson = () => {
+    copyText(currentProjectConfigJson, '配置 JSON 已复制')
+  }
+
+  const handleImportProjectConfig = async (file) => {
+    try {
+      const importedConfig = await readProjectConfigFile(file)
+      applyProjectConfigPayload(importedConfig, 'JSON 配置已导入')
+    } catch (error) {
+      showFeedback(error?.message || 'JSON 解析失败，请检查文件格式', 5200)
+    }
   }
 
 
@@ -348,6 +454,15 @@ function App() {
           templates={templates}
           onLoadTemplate={handleLoadTemplate}
           onDeleteTemplate={handleDeleteTemplate}
+          projectConfigs={projectConfigs}
+          currentConfigJson={currentProjectConfigJson}
+          onSaveProjectConfig={handleSaveProjectConfig}
+          onLoadProjectConfig={handleLoadProjectConfig}
+          onDeleteProjectConfig={handleDeleteProjectConfig}
+          onExportCurrentProjectConfig={handleExportCurrentProjectConfig}
+          onExportProjectConfig={handleExportProjectConfig}
+          onCopyProjectConfigJson={handleCopyProjectConfigJson}
+          onImportProjectConfig={handleImportProjectConfig}
         />
         <OutputPanel
           mermaidCode={mermaidCode}

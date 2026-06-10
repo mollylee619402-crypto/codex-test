@@ -4,6 +4,7 @@ import ProjectConfigPanel from './ProjectConfigPanel'
 import StructuredEditor from './StructuredEditor'
 import TemplatePresetSelector from './TemplatePresetSelector'
 import TemplateManager from './TemplateManager'
+import ProjectConfigManager from './ProjectConfigManager'
 
 function InputPanel({
   input,
@@ -26,7 +27,16 @@ function InputPanel({
   onApplyProjectPreset,
   templates,
   onLoadTemplate,
-  onDeleteTemplate
+  onDeleteTemplate,
+  projectConfigs,
+  currentConfigJson,
+  onSaveProjectConfig,
+  onLoadProjectConfig,
+  onDeleteProjectConfig,
+  onExportCurrentProjectConfig,
+  onExportProjectConfig,
+  onCopyProjectConfigJson,
+  onImportProjectConfig
 }) {
   const handleExampleChange = (event) => {
     const example = ENVIRONMENT_EXAMPLES.find((item) => item.id === event.target.value)
@@ -99,6 +109,20 @@ function InputPanel({
 
       <div className="visio-tip">
         <strong>导出提示：</strong>进入 Visio 调整建议下载 SVG 后插入；若需要文字和节点尽量可编辑，建议下载 PPTX 可编辑版。
+      </div>
+
+      <div className="template-card">
+        <ProjectConfigManager
+          projectConfigs={projectConfigs}
+          currentConfigJson={currentConfigJson}
+          onSaveCurrent={onSaveProjectConfig}
+          onLoadConfig={onLoadProjectConfig}
+          onDeleteConfig={onDeleteProjectConfig}
+          onExportCurrent={onExportCurrentProjectConfig}
+          onExportConfig={onExportProjectConfig}
+          onCopyCurrentJson={onCopyProjectConfigJson}
+          onImportConfig={onImportProjectConfig}
+        />
       </div>
 
       <div className="template-card">
