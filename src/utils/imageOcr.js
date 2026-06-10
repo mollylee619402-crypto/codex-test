@@ -1,3 +1,5 @@
+import { preprocessImageForOcr } from './imagePreprocess.js'
+
 const SUPPORTED_IMAGE_TYPES = new Map([
   ['image/png', 'PNG'],
   ['image/jpeg', 'JPG/JPEG'],
@@ -31,10 +33,14 @@ async function loadTesseract() {
   }
 }
 
-export async function recognizeImageText(file, { onProgress } = {}) {
+export async function recognizeImageText(file, { onProgress, preprocessOptions, onPreprocess } = {}) {
   if (!isSupportedImageFile(file)) {
     throw new Error('图片格式不支持。')
   }
+
+  onPreprocess?.({ status: '正在预处理图片', progress: 0 })
+  const preparedImage = await preprocessImageForOcr(file, preprocessOptions)
+  onPreprocess?.({ status: preparedImage.notes.join('；') || '正在预处理图片', progress: 100, notes: preparedImage.notes })
 
   const { createWorker } = await loadTesseract()
   if (typeof createWorker !== 'function') {
@@ -51,7 +57,7 @@ export async function recognizeImageText(file, { onProgress } = {}) {
       }
     })
     onProgress?.({ status: '正在识别文字', progress: 0 })
-    const result = await worker.recognize(file)
+    const result = await worker.recognize(preparedImage.file)
     onProgress?.({ status: '识别完成', progress: 100 })
     return result
   } catch (error) {
