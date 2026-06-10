@@ -1,10 +1,10 @@
-import { ORGANIZATION_REPORT_LAYOUT, SITE_SURVEY_REPORT_LAYOUT, TECHNICAL_SERVICE_REPORT_LAYOUT } from './reportDiagramTemplates.js'
+import { ORGANIZATION_REPORT_LAYOUT, SITE_SURVEY_REPORT_LAYOUT, TECHNICAL_SERVICE_REPORT_LAYOUT, normalizeReportTemplateType } from './reportDiagramTemplates.js'
 
 const FONT_FAMILY = "SimSun, 'Songti SC', 'Microsoft YaHei', serif"
 const TEXT_FILL = '#111111'
 const STROKE = '#111111'
 
-function escapeXml(value) {
+export function escapeXml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -114,7 +114,7 @@ function arrowHeadForSegment(start, end, size = 8, half = 5) {
   }
 }
 
-function drawPolylineArrow(points, options = {}) {
+export function drawPolylineArrow(points, options = {}) {
   if (!Array.isArray(points) || points.length < 2) return ''
   const normalized = points.map(([x, y]) => ({ x, y }))
   const last = normalized[normalized.length - 1]
@@ -127,15 +127,15 @@ function drawPolylineArrow(points, options = {}) {
   ].join('')
 }
 
-function drawLineArrow(x1, y1, x2, y2, options = {}) {
+export function drawLineArrow(x1, y1, x2, y2, options = {}) {
   return drawPolylineArrow([[x1, y1], [x2, y2]], options)
 }
 
-function drawNode(item, options = {}) {
+export function drawRectNode(item, options = {}) {
   return node({ ...item, ...options })
 }
 
-function drawPhaseBox(stage, layout) {
+export function drawPhaseBox(stage, layout) {
   return rect({
     x: stage.x,
     y: stage.y,
@@ -149,7 +149,7 @@ function drawPhaseBox(stage, layout) {
   })
 }
 
-function drawCaption(caption, x, y, options = {}) {
+export function drawCaption(caption, x, y, options = {}) {
   return text(caption, x, y, { size: 18, bold: true, ...options })
 }
 
@@ -246,7 +246,7 @@ function renderTechnicalServiceSvg(metadata = {}) {
   })
 
   layout.nodes.forEach((item) => {
-    parts.push(drawNode(item, {
+    parts.push(drawRectNode(item, {
       fill: colorByStage[item.stage] || '#ffffff',
       stroke: '#333333',
       textSize: item.small ? 15 : 16,
@@ -330,7 +330,7 @@ function renderOrganizationSvg(metadata = {}) {
   })
 
   layout.nodes.forEach((item) => {
-    parts.push(drawNode(item, {
+    parts.push(drawRectNode(item, {
       fill: item.fill,
       stroke: '#333333',
       textSize: item.fontSize || 14,
@@ -349,8 +349,9 @@ function renderOrganizationSvg(metadata = {}) {
 }
 
 export function renderReportSvg(templateType, input, metadata = {}) {
-  if (templateType === 'site-survey' || templateType === '资料收集与踏勘流程图') return renderSiteSurveySvg(metadata)
-  if (templateType === 'technical-service' || templateType === '技术服务总体流程图') return renderTechnicalServiceSvg(metadata)
-  if (templateType === 'project-org' || templateType === 'organization' || templateType === '项目组织架构图') return renderOrganizationSvg(metadata)
+  const normalizedType = normalizeReportTemplateType(templateType)
+  if (normalizedType === 'site-survey') return renderSiteSurveySvg(metadata)
+  if (normalizedType === 'technical-service') return renderTechnicalServiceSvg(metadata)
+  if (normalizedType === 'organization') return renderOrganizationSvg(metadata)
   return ''
 }

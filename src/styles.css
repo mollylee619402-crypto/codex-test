@@ -198,3 +198,54 @@ select { height: 44px; padding: 0 12px; margin-top: 8px; }
   width: min(100%, 860px);
   height: auto;
 }
+
+.export-size-field {
+  margin: 10px 0 12px;
+  max-width: 260px;
+}
+
+.preview-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.preview-controls button {
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.report-preview-shell {
+  max-height: 680px;
+  background: #ffffff;
+}
+
+.report-svg-preview {
+  min-width: 700px;
+  min-height: 360px;
+  display: grid;
+  place-items: start center;
+  padding: 20px;
+}
+
+.report-svg-preview svg {
+  width: calc(var(--report-preview-zoom, 1) * var(--report-svg-natural-width, 900px));
+  max-width: none;
+  height: auto;
+}
+
+.report-svg-preview.is-fit {
+  min-width: 0;
+}
+
+.report-svg-preview.is-fit svg {
+  width: min(100%, 900px);
+  max-width: 100%;
+}
+
+@media (max-width: 720px) {
+  .report-svg-preview { min-width: 0; padding: 12px; }
+  .report-svg-preview svg { width: calc(var(--report-preview-zoom, 1) * 92vw); }
+}

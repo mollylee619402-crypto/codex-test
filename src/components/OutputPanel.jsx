@@ -1,6 +1,6 @@
 import MermaidPreview from './MermaidPreview'
 import ReportSvgPreview from './ReportSvgPreview'
-import { REPORT_SVG_NOTICE } from '../utils/reportDiagramTemplates.js'
+import { EXPORT_SIZE_PRESETS, REPORT_SVG_NOTICE } from '../utils/reportDiagramTemplates.js'
 
 function OutputPanel({
   mermaidCode,
@@ -21,7 +21,9 @@ function OutputPanel({
   feedback,
   onSvgReady,
   reportSvg = '',
-  isReportSvg = false
+  isReportSvg = false,
+  exportSize = 'word-page',
+  setExportSize
 }) {
   return (
     <section className="panel output-panel">
@@ -43,6 +45,14 @@ function OutputPanel({
         onChange={(event) => setMermaidCode(event.target.value)}
         spellCheck="false"
       />
+
+
+      <label className="field-label export-size-field">
+        导出尺寸 / 页面适配
+        <select value={exportSize} onChange={(event) => setExportSize?.(event.target.value)}>
+          {Object.entries(EXPORT_SIZE_PRESETS).map(([value, preset]) => <option key={value} value={value}>{preset.label}</option>)}
+        </select>
+      </label>
 
       <div className="export-toolbar" aria-label="导出工具栏">
         <button type="button" className="primary" onClick={onCopyCode}>复制 Mermaid 代码</button>

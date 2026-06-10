@@ -8,7 +8,7 @@ const PNG_MIME_TYPE = 'image/png'
 const DEFAULT_WIDTH = 1200
 const DEFAULT_HEIGHT = 800
 const DEFAULT_SCALE = 3
-const EXPORT_ERROR_MESSAGE = '当前图形包含浏览器无法栅格化的内容。建议下载 SVG 或 PPTX 可编辑版。'
+const EXPORT_ERROR_MESSAGE = 'PNG 导出失败，建议下载 SVG 或 PPTX 可编辑版后插入 Word/PPT。'
 const EXPORT_TEXT_ERROR_MESSAGE = 'PNG 导出失败：未检测到可渲染的 SVG 文本，请尝试下载 SVG 或 PPTX 可编辑版'
 const EXPORT_FONT_FAMILY = 'Arial, "Microsoft YaHei", "Noto Sans SC", sans-serif'
 const DEFAULT_TEXT_FILL = '#1f2937'
@@ -234,7 +234,26 @@ function ensureLightBackground(clonedSvg, width, height) {
   clonedSvg.insertBefore(background, clonedSvg.firstChild)
 }
 
-function prepareSvgForExport(svg) {
+
+function validateReportSvgForPng(clonedSvg) {
+  if (!clonedSvg) throw new Error('PNG 导出失败：未检测到报告版 SVG')
+  if (!clonedSvg.getAttribute('width') || !clonedSvg.getAttribute('height') || !clonedSvg.getAttribute('viewBox')) {
+    throw new Error('PNG 导出失败：报告版 SVG 缺少 width、height 或 viewBox')
+  }
+  if (clonedSvg.querySelectorAll('text').length === 0) {
+    throw new Error('PNG 导出失败：报告版 SVG 未检测到文字节点')
+  }
+  const forbidden = clonedSvg.querySelector('foreignObject, script, iframe, canvas, video, audio, image[href^="http"], image[xlink\\:href^="http"]')
+  if (forbidden) {
+    throw new Error(`PNG 导出失败：报告版 SVG 包含不支持的 ${forbidden.tagName} 元素`)
+  }
+  const serialized = new XMLSerializer().serializeToString(clonedSvg)
+  if (/@import|@font-face|https?:\/\//i.test(serialized)) {
+    throw new Error('PNG 导出失败：报告版 SVG 包含外部资源')
+  }
+}
+
+function prepareSvgForExport(svg, options = {}) {
   const sourceSvg = getSvgElement(svg)
   const clonedSvg = sourceSvg.cloneNode(true)
 
@@ -251,6 +270,7 @@ function prepareSvgForExport(svg) {
     clonedSvg.setAttribute('viewBox', `0 0 ${width} ${height}`)
   }
 
+  if (options.isReportSvg) validateReportSvgForPng(clonedSvg)
   sanitizeSvgForPng(clonedSvg)
   ensureSvgTextForPng(clonedSvg)
   ensureLightBackground(clonedSvg, width, height)
@@ -321,12 +341,14 @@ async function renderSvgToCanvas(markup, context) {
   console.log('canvg render completed')
 }
 
-export async function downloadPng(svg, title = 'flowcraft-diagram', scale = DEFAULT_SCALE) {
-  const exportScale = Math.max(1, Number(scale) || DEFAULT_SCALE)
+export async function downloadPng(svg, title = 'flowcraft-diagram', scaleOrOptions = DEFAULT_SCALE) {
+  const options = typeof scaleOrOptions === 'object' ? scaleOrOptions : { scale: scaleOrOptions }
+  const exportScale = Math.max(1, Number(options.scale) || DEFAULT_SCALE)
 
   try {
-    const { width, height, markup } = prepareSvgForExport(svg)
-    const { canvas, context } = createExportCanvas(width, height, exportScale)
+    const { width, height, markup } = prepareSvgForExport(svg, options)
+    const presetScale = options.targetWidth ? Math.max(exportScale, (Number(options.targetWidth) / width) * exportScale) : exportScale
+    const { canvas, context } = createExportCanvas(width, height, presetScale)
 
     await renderSvgToCanvas(markup, context)
 
@@ -337,9 +359,10 @@ export async function downloadPng(svg, title = 'flowcraft-diagram', scale = DEFA
     console.log('png download triggered')
   } catch (error) {
     console.error('PNG export failed in canvg pipeline', error)
-    if (error?.message === EXPORT_TEXT_ERROR_MESSAGE) {
+    if (error?.message && error.message.startsWith('PNG 导出失败')) {
       throw error
     }
+    if (error?.message === EXPORT_TEXT_ERROR_MESSAGE) throw error
     throw new Error(EXPORT_ERROR_MESSAGE)
   }
 }

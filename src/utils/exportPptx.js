@@ -1,6 +1,6 @@
 import pptxgen from 'pptxgenjs'
 import { fileNameFromTitle } from './fileName.js'
-import { ORGANIZATION_REPORT_LAYOUT, SITE_SURVEY_REPORT_LAYOUT, TECHNICAL_SERVICE_REPORT_LAYOUT } from './reportDiagramTemplates.js'
+import { getExportSizePreset, normalizeReportTemplateType, ORGANIZATION_REPORT_LAYOUT, SITE_SURVEY_REPORT_LAYOUT, TECHNICAL_SERVICE_REPORT_LAYOUT } from './reportDiagramTemplates.js'
 
 const PALETTE = {
   phase: { fill: 'F6F9FC', line: '9AAFC1' },
@@ -444,14 +444,19 @@ function addInfoSlide(slide, metadata, summary, isTallLayout = false) {
   slide.addText(text, { x: 0.75, y: 1.0, w: width - 0.25, h: textHeight, fontFace: 'Microsoft YaHei', fontSize: 12, color: '334155', breakLine: false, fit: 'shrink', valign: 'top', margin: 0.1, bullet: false })
 }
 
-export async function downloadEditablePptx({ mermaidCode, metadata, summary, diagramType }) {
+export async function downloadEditablePptx({ mermaidCode, metadata, summary, diagramType, exportSize = 'word-page' }) {
   const pptx = new pptxgen()
-  if (diagramType === 'technical-service') {
+  const reportType = normalizeReportTemplateType(diagramType)
+  const preset = getExportSizePreset(exportSize)
+  if (reportType === 'technical-service') {
     pptx.defineLayout({ name: 'FLOWCRAFT_TALL', width: 10, height: 19 })
     pptx.layout = 'FLOWCRAFT_TALL'
-  } else if (diagramType === 'project-org' || diagramType === 'organization' || diagramType === '项目组织架构图') {
+  } else if (reportType === 'organization') {
     pptx.defineLayout({ name: 'FLOWCRAFT_ORG', width: 13.333, height: 10.05 })
     pptx.layout = 'FLOWCRAFT_ORG'
+  } else if (preset.pptxLayout) {
+    pptx.defineLayout(preset.pptxLayout)
+    pptx.layout = preset.pptxLayout.name
   } else {
     pptx.layout = 'LAYOUT_WIDE'
   }
@@ -464,11 +469,11 @@ export async function downloadEditablePptx({ mermaidCode, metadata, summary, dia
   const slide = pptx.addSlide()
   slide.background = { color: 'FFFFFF' }
 
-  if (diagramType === 'site-survey') {
+  if (reportType === 'site-survey') {
     drawSiteSurveyReport(slide, pptx, metadata)
-  } else if (diagramType === 'technical-service') {
+  } else if (reportType === 'technical-service') {
     drawTechnicalServiceReport(slide, pptx, metadata)
-  } else if (diagramType === 'project-org' || diagramType === 'organization' || diagramType === '项目组织架构图') {
+  } else if (reportType === 'organization') {
     drawOrg(slide, pptx)
   } else {
     slide.addText(metadata.title, { x: 0.45, y: 0.25, w: 12.4, h: 0.35, fontFace: 'Microsoft YaHei', fontSize: 18, bold: true, color: '17324D', align: 'center' })
@@ -477,7 +482,7 @@ export async function downloadEditablePptx({ mermaidCode, metadata, summary, dia
 
     slide.addText(metadata.caption, { x: 0.45, y: 6.55, w: 12.4, h: 0.3, fontFace: 'Microsoft YaHei', fontSize: 12, bold: true, color: '334155', align: 'center' })
   }
-  addInfoSlide(pptx.addSlide(), metadata, summary, diagramType === 'technical-service')
+  addInfoSlide(pptx.addSlide(), metadata, summary, reportType === 'technical-service')
 
   await pptx.writeFile({ fileName: fileNameFromTitle(metadata.title, 'pptx') })
 }
