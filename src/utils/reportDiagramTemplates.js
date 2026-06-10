@@ -1,9 +1,77 @@
-export const REPORT_SVG_TEMPLATE_TYPES = ['site-survey', 'technical-service', '技术服务总体流程图', 'project-org', 'organization', '项目组织架构图']
-
 export const REPORT_SVG_NOTICE = '该模板使用报告版 SVG 渲染，适合导出到 Word/PPT/Visio 后微调。'
 
-export function isReportSvgTemplate(templateType) {
-  return REPORT_SVG_TEMPLATE_TYPES.includes(templateType)
+export const reportTemplateRegistry = {
+  'site-survey': {
+    key: 'site-survey',
+    aliases: ['资料收集与踏勘流程图', '资料收集分析与踏勘工作流程图'],
+    name: '资料收集与踏勘流程图',
+    caption: '图3-2 资料收集分析与踏勘工作流程图',
+    canvas: { width: 620, height: 680 },
+    recommendedUse: 'Word 技术报告',
+    exportBaseName: '资料收集与踏勘流程图',
+    description: '用于展示调查准备、资料收集、现场踏勘、人员访谈和分析筛查流程。',
+    pptxMode: 'native'
+  },
+  'technical-service': {
+    key: 'technical-service',
+    aliases: ['技术服务总体流程图', '本项目技术服务工作流程'],
+    name: '技术服务总体流程图',
+    caption: '图4-1 本项目技术服务工作流程',
+    canvas: { width: 1040, height: 1870 },
+    recommendedUse: 'Word 技术报告',
+    exportBaseName: '技术服务总体流程图',
+    description: '用于展示进场准备、场地调查、风险评估和工程可行性研究等阶段工作流程。',
+    pptxMode: 'native'
+  },
+  organization: {
+    key: 'organization',
+    aliases: ['project-org', '项目组织架构图', '项目管理机构组织架构图'],
+    name: '项目组织架构图',
+    caption: '图1-1 项目管理机构组织架构图',
+    canvas: { width: 1300, height: 980 },
+    recommendedUse: 'Word 技术报告',
+    exportBaseName: '项目组织架构图',
+    description: '用于展示项目管理机构、工作组和实施小组的组织关系。',
+    pptxMode: 'native'
+  }
+}
+
+const reportTemplateAliasMap = Object.fromEntries(
+  Object.values(reportTemplateRegistry).flatMap((config) => [config.key, ...(config.aliases || [])].map((alias) => [alias, config.key]))
+)
+
+export const REPORT_SVG_TEMPLATE_TYPES = Object.keys(reportTemplateAliasMap)
+
+export function normalizeReportTemplateType(templateType) {
+  return reportTemplateAliasMap[templateType] || ''
+}
+
+export function isReportTemplate(templateType) {
+  return Boolean(normalizeReportTemplateType(templateType))
+}
+
+export const isReportSvgTemplate = isReportTemplate
+
+export function getReportTemplateConfig(templateType) {
+  const key = normalizeReportTemplateType(templateType)
+  return key ? reportTemplateRegistry[key] : null
+}
+
+export function getReportTemplateExportBaseName(templateType, fallback = 'FlowCraft流程图') {
+  return getReportTemplateConfig(templateType)?.exportBaseName || fallback
+}
+
+export const EXPORT_SIZE_PRESETS = {
+  'word-column': { label: 'Word 单栏宽度', targetWidth: 720, pptxLayout: { name: 'FLOWCRAFT_WORD_COLUMN', width: 6.2, height: 9.3 } },
+  'word-page': { label: 'Word 页面宽度', targetWidth: 1400, pptxLayout: { name: 'FLOWCRAFT_WORD_PAGE', width: 8.27, height: 11.69 } },
+  'a4-portrait': { label: 'A4 竖版', targetWidth: 1600, pptxLayout: { name: 'FLOWCRAFT_A4_PORTRAIT', width: 8.27, height: 11.69 } },
+  'a4-landscape': { label: 'A4 横版', targetWidth: 2200, pptxLayout: { name: 'FLOWCRAFT_A4_LANDSCAPE', width: 11.69, height: 8.27 } },
+  'ppt-16-9': { label: 'PPT 16:9', targetWidth: 1920, pptxLayout: { name: 'FLOWCRAFT_PPT_16_9', width: 13.333, height: 7.5 } },
+  original: { label: '原始尺寸', targetWidth: null, pptxLayout: null }
+}
+
+export function getExportSizePreset(value) {
+  return EXPORT_SIZE_PRESETS[value] || EXPORT_SIZE_PRESETS['word-page']
 }
 
 export const SITE_SURVEY_REPORT_LAYOUT = {

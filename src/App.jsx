@@ -8,7 +8,7 @@ import { downloadEditablePptx } from './utils/exportPptx'
 import { downloadPng } from './utils/exportPng'
 import { downloadMermaidSource, downloadSvg } from './utils/exportSvg'
 import { generateMermaid } from './utils/mermaidGenerator'
-import { isReportSvgTemplate } from './utils/reportDiagramTemplates'
+import { getExportSizePreset, getReportTemplateConfig, getReportTemplateExportBaseName, isReportTemplate } from './utils/reportDiagramTemplates'
 import { renderReportSvg } from './utils/reportSvgRenderer'
 import { generatePrompt } from './utils/promptGenerator'
 import { generateReportMetadata, metadataText } from './utils/reportMetadataGenerator'
@@ -60,6 +60,7 @@ function App() {
   const [currentSvg, setCurrentSvg] = useState('')
   const [isPngExporting, setIsPngExporting] = useState(false)
   const [pngButtonLabel, setPngButtonLabel] = useState('下载 PNG')
+  const [exportSize, setExportSize] = useState('word-page')
   const feedbackTimerRef = useRef(null)
 
   const diagramTypeLabel = useMemo(
@@ -69,10 +70,12 @@ function App() {
 
   const config = useMemo(() => ({ diagramType, diagramTypeLabel, outputPurpose, style }), [diagramType, diagramTypeLabel, outputPurpose, style])
 
-  const isReportSvg = useMemo(() => isReportSvgTemplate(diagramType), [diagramType])
+  const isReportSvg = useMemo(() => isReportTemplate(diagramType), [diagramType])
+  const reportConfig = useMemo(() => getReportTemplateConfig(diagramType), [diagramType])
+  const exportPreset = useMemo(() => getExportSizePreset(exportSize), [exportSize])
   const reportSvg = useMemo(() => (
-    isReportSvg ? renderReportSvg(diagramType, input, metadata) : ''
-  ), [diagramType, input, metadata, isReportSvg])
+    isReportSvg ? renderReportSvg(diagramType, input, { ...metadata, caption: reportConfig?.caption || metadata.caption }) : ''
+  ), [diagramType, input, metadata, reportConfig, isReportSvg])
 
   const showFeedback = useCallback((message, duration = 1800) => {
     setFeedback(message)
@@ -176,14 +179,22 @@ function App() {
     copyText(generatePrompt({ input, diagramTypeLabel, outputPurpose, style }), '提示词已复制')
   }
 
+  const exportBaseName = useMemo(() => (
+    isReportSvg ? getReportTemplateExportBaseName(diagramType, metadata.title) : metadata.title
+  ), [diagramType, isReportSvg, metadata.title])
+
   const handleDownloadSvg = () => {
     const exportSvg = isReportSvg ? reportSvg : currentSvg
     if (!exportSvg) {
       showFeedback('当前没有可下载的 SVG')
       return
     }
-    downloadSvg(exportSvg, metadata.title)
-    showFeedback('SVG 已下载')
+    try {
+      downloadSvg(exportSvg, exportBaseName)
+      showFeedback('SVG 下载已开始')
+    } catch (error) {
+      showFeedback(`SVG 下载失败：${error?.message || '未检测到有效 SVG'}`)
+    }
   }
 
   const handleDownloadPng = async () => {
@@ -199,14 +210,15 @@ function App() {
     showFeedback('正在导出 PNG...', 0)
 
     try {
-      await downloadPng(exportSvg, metadata.title, 3)
+      await downloadPng(exportSvg, exportBaseName, { scale: 3, targetWidth: exportPreset.targetWidth, isReportSvg })
       setPngButtonLabel('PNG 下载已开始')
       showFeedback('PNG 下载已开始', 2600)
     } catch (error) {
       console.error('PNG export failed', error)
       const message = error?.message || '未知错误'
-      setPngButtonLabel(`PNG 导出失败：${message}`)
-      showFeedback(`PNG 导出失败：${message}`, 6200)
+      const friendlyMessage = message.startsWith('PNG 导出失败') ? message : `PNG 导出失败：${message}`
+      setPngButtonLabel('下载 PNG')
+      showFeedback(`${friendlyMessage}，建议下载 SVG 或 PPTX 可编辑版后插入 Word/PPT。`, 6200)
     } finally {
       setIsPngExporting(false)
     }
@@ -214,16 +226,21 @@ function App() {
 
   const handleDownloadPptx = async () => {
     try {
-      await downloadEditablePptx({ mermaidCode, metadata, summary, diagramType })
-      showFeedback('PPTX 可编辑版已下载')
-    } catch {
-      showFeedback('PPTX 导出失败，请检查浏览器下载权限')
+      await downloadEditablePptx({ mermaidCode, metadata: { ...metadata, title: exportBaseName }, summary, diagramType, exportSize })
+      const mode = reportConfig?.pptxMode === 'native' ? '' : '（该模板暂使用 SVG 图形插入，部分元素可能不可编辑）'
+      showFeedback(`PPTX 下载已开始${mode}`)
+    } catch (error) {
+      showFeedback(`PPTX 导出失败：${error?.message || '请检查浏览器下载权限'}`)
     }
   }
 
   const handleDownloadMermaid = () => {
-    downloadMermaidSource(mermaidCode, metadata.title)
-    showFeedback('Mermaid 源码已下载')
+    try {
+      downloadMermaidSource(mermaidCode, exportBaseName)
+      showFeedback('Mermaid 源码下载已开始')
+    } catch (error) {
+      showFeedback(`Mermaid 源码下载失败：${error?.message || '源码为空'}`)
+    }
   }
 
   const resetExample = () => {
@@ -260,7 +277,7 @@ function App() {
           metadataText={metadataText(metadata)}
           onCopyCode={() => copyText(mermaidCode, 'Mermaid 代码已复制')}
           onCopyPrompt={handleCopyPrompt}
-          onCopyMetadata={() => copyText(metadataText(metadata), '图题与说明已复制')}
+          onCopyMetadata={() => copyText(isReportSvg && reportConfig ? `图题：${reportConfig.caption}\n\n说明：本图为报告版 SVG 模板生成，适合插入 Word、PPT 或 Visio 后进行微调。${reportConfig.description ? `\n${reportConfig.description}` : ''}` : metadataText(metadata), '图题与说明已复制')}
           onDownloadSvg={handleDownloadSvg}
           onDownloadPng={handleDownloadPng}
           isPngExporting={isPngExporting}
@@ -272,6 +289,8 @@ function App() {
           onSvgReady={setCurrentSvg}
           reportSvg={reportSvg}
           isReportSvg={isReportSvg}
+          exportSize={exportSize}
+          setExportSize={setExportSize}
         />
       </main>
     </div>
