@@ -1,4 +1,5 @@
 import { ORGANIZATION_REPORT_LAYOUT, SITE_SURVEY_REPORT_LAYOUT, TECHNICAL_SERVICE_REPORT_LAYOUT, normalizeReportTemplateType } from './reportDiagramTemplates.js'
+import { captionFromProjectConfig } from './projectConfigDefaults.js'
 
 const FONT_FAMILY = "SimSun, 'Songti SC', 'Microsoft YaHei', serif"
 const TEXT_FILL = '#111111'
@@ -153,8 +154,126 @@ export function drawCaption(caption, x, y, options = {}) {
   return text(caption, x, y, { size: 18, bold: true, ...options })
 }
 
-function renderSiteSurveySvg(metadata = {}) {
-  const layout = SITE_SURVEY_REPORT_LAYOUT
+
+function nextLabel(labels, index, fallback) {
+  const value = labels[index]
+  return value ? { label: value, nextIndex: index + 1 } : { label: fallback, nextIndex: index }
+}
+
+function stageLabels(diagramContent = {}) {
+  return (diagramContent.stages || []).flatMap((stage) => (stage.nodes || []).flatMap((node) => [node.text, ...(node.children || [])])).filter(Boolean)
+}
+
+export function withSiteSurveyContent(projectConfig = {}, diagramContent = {}) {
+  const labels = stageLabels(diagramContent)
+  const layout = {
+    ...SITE_SURVEY_REPORT_LAYOUT,
+    caption: captionFromProjectConfig(projectConfig, SITE_SURVEY_REPORT_LAYOUT.caption),
+    nodes: SITE_SURVEY_REPORT_LAYOUT.nodes.map((node) => ({ ...node })),
+    group: {
+      ...SITE_SURVEY_REPORT_LAYOUT.group,
+      children: SITE_SURVEY_REPORT_LAYOUT.group.children.map((child) => ({ ...child }))
+    }
+  }
+  let i = 0
+  layout.nodes.slice(0, 4).forEach((node, index) => {
+    const result = nextLabel(labels, i, node.label)
+    layout.nodes[index].label = result.label
+    i = result.nextIndex
+  })
+  let result = nextLabel(labels, i, layout.group.label)
+  layout.group.label = result.label
+  i = result.nextIndex
+  layout.group.children.forEach((child, index) => {
+    result = nextLabel(labels, i, child.label)
+    layout.group.children[index].label = result.label
+    i = result.nextIndex
+  })
+  layout.nodes.slice(4).forEach((node, offset) => {
+    result = nextLabel(labels, i, node.label)
+    layout.nodes[offset + 4].label = result.label
+    i = result.nextIndex
+  })
+  return layout
+}
+
+export function withTechnicalServiceContent(projectConfig = {}, diagramContent = {}) {
+  const stages = diagramContent.stages || []
+  const layout = {
+    ...TECHNICAL_SERVICE_REPORT_LAYOUT,
+    caption: captionFromProjectConfig(projectConfig, TECHNICAL_SERVICE_REPORT_LAYOUT.caption),
+    stages: TECHNICAL_SERVICE_REPORT_LAYOUT.stages.map((stage, index) => ({ ...stage, label: stages[index]?.title || stage.label })),
+    nodes: TECHNICAL_SERVICE_REPORT_LAYOUT.nodes.map((node) => ({ ...node }))
+  }
+  layout.stages.forEach((stage, stageIndex) => {
+    const labels = stages[stageIndex] ? stageLabels({ stages: [stages[stageIndex]] }) : []
+    let i = 0
+    layout.nodes.forEach((node, nodeIndex) => {
+      if (node.stage !== stage.id) return
+      const result = nextLabel(labels, i, node.label)
+      layout.nodes[nodeIndex].label = result.label
+      i = result.nextIndex
+    })
+  })
+  return layout
+}
+
+function parseColonListValue(text, key) {
+  const normalized = String(text || '').trim()
+  const prefix = `${key}：`
+  const asciiPrefix = `${key}:`
+  if (normalized.startsWith(prefix)) return normalized.slice(prefix.length).trim()
+  if (normalized.startsWith(asciiPrefix)) return normalized.slice(asciiPrefix.length).trim()
+  return ''
+}
+
+function splitList(text) {
+  return String(text || '').split(/[、,，;；]/).map((item) => item.trim()).filter(Boolean)
+}
+
+export function withOrganizationContent(projectConfig = {}, diagramContent = {}) {
+  const layout = {
+    ...ORGANIZATION_REPORT_LAYOUT,
+    caption: captionFromProjectConfig(projectConfig, ORGANIZATION_REPORT_LAYOUT.caption),
+    nodes: ORGANIZATION_REPORT_LAYOUT.nodes.map((node) => ({ ...node }))
+  }
+  const nodes = (diagramContent.stages || []).flatMap((stage) => stage.nodes || [])
+  const get = (key) => nodes.map((nodeItem) => parseColonListValue(nodeItem.text, key)).find(Boolean)
+  const companyName = get('公司名称') || projectConfig.organizationName
+  const projectTeamName = get('项目组名称') || (projectConfig.projectName ? `${projectConfig.projectName}项目组` : '')
+  const chief = get('项目总负责人')
+  const support = splitList(get('公司支撑部门'))
+  const workGroups = nodes.filter((nodeItem) => nodeItem.text.startsWith('工作组：') || nodeItem.text.startsWith('工作组:'))
+
+  layout.nodes.forEach((node) => {
+    if (node.id === 'project' && projectConfig.projectName) node.label = projectConfig.projectName
+    if (node.id === 'company' && companyName) node.label = companyName
+    if (node.id === 'project-group' && projectTeamName) node.label = projectTeamName
+    if (node.id === 'chief' && chief) node.label = chief
+  })
+  support.slice(0, 8).forEach((label, index) => {
+    const node = layout.nodes.find((item) => item.id === `support-${index + 1}`)
+    if (node) node.label = label
+  })
+  workGroups.slice(0, 2).forEach((group, index) => {
+    const teamId = index === 0 ? 'field-team' : 'design-team'
+    const leaderId = index === 0 ? 'field-leader' : 'design-leader'
+    const taskPrefix = index === 0 ? 'field-task' : 'design-task'
+    const team = layout.nodes.find((item) => item.id === teamId)
+    if (team) team.label = group.text.replace(/^工作组[：:]/, '').trim() || team.label
+    const children = group.children || []
+    const leader = layout.nodes.find((item) => item.id === leaderId)
+    if (leader && children[0]) leader.label = children[0]
+    children.slice(1).forEach((label, taskIndex) => {
+      const task = layout.nodes.find((item) => item.id === `${taskPrefix}-${taskIndex + 1}`)
+      if (task) task.label = label
+    })
+  })
+  return layout
+}
+
+function renderSiteSurveySvg(metadata = {}, projectConfig = {}, diagramContent = {}) {
+  const layout = withSiteSurveyContent(projectConfig, diagramContent)
   const { node: nodeBox, group } = layout
   const centerX = nodeBox.x + nodeBox.width / 2
   const parts = []
@@ -233,8 +352,8 @@ function smartArrow(from, to) {
 }
 
 
-function renderTechnicalServiceSvg(metadata = {}) {
-  const layout = TECHNICAL_SERVICE_REPORT_LAYOUT
+function renderTechnicalServiceSvg(metadata = {}, projectConfig = {}, diagramContent = {}) {
+  const layout = withTechnicalServiceContent(projectConfig, diagramContent)
   const caption = metadata.caption || layout.caption
   const nodeById = Object.fromEntries(layout.nodes.map((item) => [item.id, item]))
   const colorByStage = Object.fromEntries(layout.stages.map((stage) => [stage.id, stage.color]))
@@ -313,8 +432,8 @@ function drawOrgConnector(connector, nodeById) {
   return drawLineArrow(fromX, fromY, toX, toY, { strokeWidth: 1.2 })
 }
 
-function renderOrganizationSvg(metadata = {}) {
-  const layout = ORGANIZATION_REPORT_LAYOUT
+function renderOrganizationSvg(metadata = {}, projectConfig = {}, diagramContent = {}) {
+  const layout = withOrganizationContent(projectConfig, diagramContent)
   const caption = metadata.caption || layout.caption
   const nodeById = Object.fromEntries(layout.nodes.map((item) => [item.id, item]))
   const parts = []
@@ -348,10 +467,10 @@ function renderOrganizationSvg(metadata = {}) {
 </svg>`
 }
 
-export function renderReportSvg(templateType, input, metadata = {}) {
+export function renderReportSvg(templateType, input, metadata = {}, projectConfig = {}, diagramContent = {}) {
   const normalizedType = normalizeReportTemplateType(templateType)
-  if (normalizedType === 'site-survey') return renderSiteSurveySvg(metadata)
-  if (normalizedType === 'technical-service') return renderTechnicalServiceSvg(metadata)
-  if (normalizedType === 'organization') return renderOrganizationSvg(metadata)
+  if (normalizedType === 'site-survey') return renderSiteSurveySvg(metadata, projectConfig, diagramContent)
+  if (normalizedType === 'technical-service') return renderTechnicalServiceSvg(metadata, projectConfig, diagramContent)
+  if (normalizedType === 'organization') return renderOrganizationSvg(metadata, projectConfig, diagramContent)
   return ''
 }
