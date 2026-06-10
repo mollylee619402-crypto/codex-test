@@ -1,6 +1,6 @@
-const MAX_OCR_DIMENSION = 3600
-const MAX_OCR_PIXELS = 14000000
-const DEFAULT_CROP_PADDING = 20
+const MAX_OCR_DIMENSION = 4200
+const MAX_OCR_PIXELS = 18000000
+const DEFAULT_CROP_PADDING = 32
 
 function canvasToBlob(canvas, type = 'image/png') {
   return new Promise((resolve, reject) => {
@@ -48,16 +48,23 @@ function drawToCanvas(source, width, height) {
   return { canvas, context }
 }
 
-function isNearWhite(r, g, b, alpha) {
-  if (alpha <= 12) return true
-  const spread = Math.max(r, g, b) - Math.min(r, g, b)
-  return r >= 244 && g >= 244 && b >= 244 && spread <= 18
+function isContentPixel(r, g, b, alpha) {
+  if (alpha <= 12) return false
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const luminance = 0.299 * r + 0.587 * g + 0.114 * b
+  const saturation = max - min
+
+  // Detect black text, grey connector lines, colored fills/borders, and light grey flowchart strokes.
+  if (luminance < 238) return true
+  if (luminance < 248 && saturation > 10) return true
+  return max < 252 && min < 252 && saturation <= 18
 }
 
 function findContentBounds(context, width, height) {
   const imageData = context.getImageData(0, 0, width, height)
   const { data } = imageData
-  const step = Math.max(1, Math.floor(Math.max(width, height) / 1200))
+  const step = Math.max(1, Math.floor(Math.max(width, height) / 1600))
   let minX = width
   let minY = height
   let maxX = -1
@@ -69,7 +76,7 @@ function findContentBounds(context, width, height) {
     for (let x = 0; x < width; x += step) {
       const index = (y * width + x) * 4
       sampledPixels += 1
-      if (!isNearWhite(data[index], data[index + 1], data[index + 2], data[index + 3])) {
+      if (isContentPixel(data[index], data[index + 1], data[index + 2], data[index + 3])) {
         contentPixels += 1
         minX = Math.min(minX, x)
         minY = Math.min(minY, y)
@@ -81,7 +88,7 @@ function findContentBounds(context, width, height) {
 
   if (maxX < minX || maxY < minY) return null
   const contentRatio = contentPixels / Math.max(1, sampledPixels)
-  if (contentRatio > 0.92) return null
+  if (contentRatio > 0.96 || contentRatio < 0.0002) return null
   return { minX, minY, maxX, maxY, step }
 }
 
@@ -99,7 +106,7 @@ function cropWhitespace(canvas, context, padding = DEFAULT_CROP_PADDING) {
   const removedWidthRatio = 1 - cropWidth / width
   const removedHeightRatio = 1 - cropHeight / height
 
-  if ((removedWidthRatio < 0.03 && removedHeightRatio < 0.03) || cropWidth < width * 0.08 || cropHeight < height * 0.08) {
+  if ((removedWidthRatio < 0.02 && removedHeightRatio < 0.02) || cropWidth < width * 0.06 || cropHeight < height * 0.06) {
     return { canvas, context, cropped: false }
   }
 
@@ -116,24 +123,28 @@ function applyPixelFilters(canvas, context, { grayscale, enhanceContrast }) {
   if (!grayscale && !enhanceContrast) return false
   const imageData = context.getImageData(0, 0, canvas.width, canvas.height)
   const { data } = imageData
-  const contrast = enhanceContrast ? 1.28 : 1
+  const contrast = enhanceContrast ? 1.55 : 1
 
   for (let index = 0; index < data.length; index += 4) {
-    let r = data[index]
-    let g = data[index + 1]
-    let b = data[index + 2]
-
-    if (grayscale) {
-      const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b)
-      r = gray
-      g = gray
-      b = gray
-    }
+    const sourceR = data[index]
+    const sourceG = data[index + 1]
+    const sourceB = data[index + 2]
+    const gray = Math.round(0.299 * sourceR + 0.587 * sourceG + 0.114 * sourceB)
+    let r = grayscale ? gray : sourceR
+    let g = grayscale ? gray : sourceG
+    let b = grayscale ? gray : sourceB
 
     if (enhanceContrast) {
-      r = Math.max(0, Math.min(255, (r - 128) * contrast + 128))
-      g = Math.max(0, Math.min(255, (g - 128) * contrast + 128))
-      b = Math.max(0, Math.min(255, (b - 128) * contrast + 128))
+      const highContrastGray = gray < 210 ? Math.max(0, Math.round((gray - 128) * contrast + 110)) : 255
+      const target = gray < 235 ? highContrastGray : 255
+      r = grayscale ? target : Math.max(0, Math.min(255, (r - 128) * contrast + 128))
+      g = grayscale ? target : Math.max(0, Math.min(255, (g - 128) * contrast + 128))
+      b = grayscale ? target : Math.max(0, Math.min(255, (b - 128) * contrast + 128))
+      if (gray < 190) {
+        r = Math.min(r, target)
+        g = Math.min(g, target)
+        b = Math.min(b, target)
+      }
     }
 
     data[index] = r
@@ -145,22 +156,55 @@ function applyPixelFilters(canvas, context, { grayscale, enhanceContrast }) {
   return true
 }
 
+function applyBinarization(canvas, context) {
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height)
+  const { data } = imageData
+
+  for (let index = 0; index < data.length; index += 4) {
+    const gray = Math.round(0.299 * data[index] + 0.587 * data[index + 1] + 0.114 * data[index + 2])
+    if (gray >= 226) {
+      data[index] = 255
+      data[index + 1] = 255
+      data[index + 2] = 255
+    } else if (gray <= 175) {
+      data[index] = 0
+      data[index + 1] = 0
+      data[index + 2] = 0
+    }
+  }
+
+  context.putImageData(imageData, 0, 0)
+}
+
+function getUpscaleFactor(canvas, requestedUpscale) {
+  const longest = Math.max(canvas.width, canvas.height)
+  const shortest = Math.min(canvas.width, canvas.height)
+  if (requestedUpscale) {
+    if (longest < 1200 || shortest < 700) return 3.4
+    if (longest < 2200) return 2.6
+    return 2
+  }
+  if (longest < 1000 || shortest < 520) return 2.4
+  if (longest < 1800) return 2
+  return 1.6
+}
+
 function scaleCanvas(canvas, scale) {
-  if (scale <= 1) return { canvas, scaled: false }
+  if (scale <= 1) return { canvas, scaled: false, scale: 1 }
   const maxScaleByDimension = MAX_OCR_DIMENSION / Math.max(canvas.width, canvas.height)
   const maxScaleByPixels = Math.sqrt(MAX_OCR_PIXELS / Math.max(1, canvas.width * canvas.height))
   const safeScale = Math.min(scale, maxScaleByDimension, maxScaleByPixels)
-  if (safeScale <= 1.05) return { canvas, scaled: false }
+  if (safeScale <= 1.05) return { canvas, scaled: false, scale: 1 }
 
   const nextCanvas = document.createElement('canvas')
   nextCanvas.width = Math.round(canvas.width * safeScale)
   nextCanvas.height = Math.round(canvas.height * safeScale)
-  const nextContext = nextCanvas.getContext('2d')
-  if (!nextContext) return { canvas, scaled: false }
+  const nextContext = nextCanvas.getContext('2d', { willReadFrequently: true })
+  if (!nextContext) return { canvas, scaled: false, scale: 1 }
   nextContext.imageSmoothingEnabled = true
   nextContext.imageSmoothingQuality = 'high'
   nextContext.drawImage(canvas, 0, 0, nextCanvas.width, nextCanvas.height)
-  return { canvas: nextCanvas, scaled: true }
+  return { canvas: nextCanvas, scaled: true, scale: safeScale }
 }
 
 export async function preprocessImageForOcr(file, options = {}) {
@@ -180,19 +224,24 @@ export async function preprocessImageForOcr(file, options = {}) {
       const cropped = cropWhitespace(canvas, context)
       canvas = cropped.canvas
       context = cropped.context
-      notes.push(cropped.cropped ? '自动裁剪空白边已启用' : '自动裁剪空白边未检测到可裁剪区域')
+      notes.push(cropped.cropped ? '已强制裁剪图形主体并保留边距' : '自动裁剪未检测到可裁剪区域，已继续使用原图')
     }
+
+    const scaleFactor = getUpscaleFactor(canvas, options.upscale)
+    const scaled = scaleCanvas(canvas, scaleFactor)
+    canvas = scaled.canvas
+    context = canvas.getContext('2d', { willReadFrequently: true }) || context
+    notes.push(scaled.scaled ? `OCR 输入图已放大 ${scaled.scale.toFixed(1)}x` : '图片尺寸较大，已限制放大避免浏览器卡顿')
 
     if (options.grayscale || options.enhanceContrast) {
-      applyPixelFilters(canvas, context, options)
+      applyPixelFilters(canvas, context, { grayscale: true, enhanceContrast: options.enhanceContrast })
       if (options.grayscale) notes.push('灰度化已启用')
-      if (options.enhanceContrast) notes.push('自动增强对比度已启用')
+      if (options.enhanceContrast) notes.push('高对比度增强已启用')
     }
 
-    if (options.upscale) {
-      const scaled = scaleCanvas(canvas, 1.8)
-      canvas = scaled.canvas
-      notes.push(scaled.scaled ? '放大后识别已启用' : '图片尺寸较大，已跳过放大')
+    if (options.enhanceContrast) {
+      applyBinarization(canvas, context)
+      notes.push('二值化清晰化已启用')
     }
 
     const blob = await canvasToBlob(canvas)

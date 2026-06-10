@@ -1,5 +1,6 @@
 const STAGE_CONTEXT_RE = /(阶段|流程|报告|工作阶段|工作流程|工作内容|主要工作)/
 const NOISE_RE = /^[\s\-—–→←↑↓|｜·•*#_=+~.。,，、:：;；()（）\[\]【】]+$/
+const GARBLED_RE = /[�□■◆◇]{1,}|^[A-Za-z0-9]{1,2}$/
 
 function normalizeText(value = '') {
   return String(value)
@@ -28,7 +29,9 @@ function getBox(item = {}) {
 
 function isValidText(value) {
   const text = normalizeText(value)
-  return text.length >= 2 && !NOISE_RE.test(text)
+  if (text.length < 2 || NOISE_RE.test(text) || GARBLED_RE.test(text)) return false
+  const meaningfulChars = text.match(/[\u4e00-\u9fa5A-Za-z0-9]/g) || []
+  return meaningfulChars.length >= 2
 }
 
 function extractBlocks(ocrResult = {}) {
@@ -74,6 +77,31 @@ function groupRows(blocks) {
     .filter(isValidText)
 }
 
+
+function extractFigureCaption(lines) {
+  for (const line of lines) {
+    const match = normalizeText(line).match(/(图\s*\d+\s*[-－—–]\s*\d+)\s*(.+)?/)
+    if (match) {
+      return {
+        figureNumber: match[1].replace(/\s+/g, '').replace(/[－—–]/g, '-'),
+        figureTitle: normalizeText(match[2] || '')
+      }
+    }
+  }
+  return null
+}
+
+function createQualityHint(text, nodeCount) {
+  const normalized = normalizeText(text)
+  const hints = []
+  if (normalized.length < 24 || nodeCount <= 2) hints.push('识别结果较少，建议上传更清晰截图，或启用放大后识别。')
+  if (nodeCount >= 3) hints.push('已识别到若干文本节点，请人工校对后应用。')
+  if (/[^\u4e00-\u9fa5A-Za-z0-9\s\-—–→←（）()：:；;，,。.、*\n]/.test(text) || /(.)\1{4,}/.test(text)) {
+    hints.push('识别结果可能包含乱码或重复文本，请校对。')
+  }
+  return hints
+}
+
 function isStageTitle(text) {
   const normalized = normalizeText(text)
   if (/^阶段\s*[一二三四五六七八九十\d]+/.test(normalized)) return true
@@ -96,10 +124,17 @@ function formatStageTitle(text, index) {
 export function ocrToStructuredInput(ocrResult = {}) {
   const blocks = extractBlocks(ocrResult)
   const lines = groupRows(blocks)
-  const uniqueLines = lines.filter((line, index) => lines.indexOf(line) === index)
+  const seenLines = new Set()
+  const uniqueLines = lines.filter((line) => {
+    const key = line.replace(/\s+/g, '').toLowerCase()
+    if (seenLines.has(key)) return false
+    seenLines.add(key)
+    return true
+  })
+  const caption = extractFigureCaption(uniqueLines)
 
   if (!uniqueLines.length) {
-    return { text: '', lines: [], blocks, hasStage: false }
+    return { text: '', lines: [], blocks, hasStage: false, caption: null, quality: createQualityHint('', 0) }
   }
 
   const hasStage = uniqueLines.some(isStageTitle)
@@ -108,7 +143,9 @@ export function ocrToStructuredInput(ocrResult = {}) {
       text: uniqueLines.map((line) => `* ${line}`).join('\n'),
       lines: uniqueLines,
       blocks,
-      hasStage: false
+      hasStage: false,
+      caption,
+      quality: createQualityHint(uniqueLines.join('\n'), uniqueLines.length)
     }
   }
 
@@ -134,5 +171,6 @@ export function ocrToStructuredInput(ocrResult = {}) {
     hasNodeInCurrentStage = true
   })
 
-  return { text: output.join('\n').trim(), lines: uniqueLines, blocks, hasStage: true }
+  const text = output.join('\n').trim()
+  return { text, lines: uniqueLines, blocks, hasStage: true, caption, quality: createQualityHint(text, uniqueLines.length) }
 }
