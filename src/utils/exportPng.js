@@ -9,6 +9,13 @@ const PNG_MIME_TYPE = 'image/png'
 const DEFAULT_WIDTH = 1200
 const DEFAULT_HEIGHT = 800
 const DEFAULT_SCALE = 3
+const MAX_CANVAS_PIXELS = 60_000_000
+export const PNG_SCALE_OPTIONS = [
+  { value: 1, label: '标准清晰度 1x', fileLabel: '1x' },
+  { value: 2, label: '高清 2x', fileLabel: '高清2x' },
+  { value: 3, label: '超清 3x', fileLabel: '超清3x' },
+  { value: 4, label: '打印级 4x', fileLabel: '打印级4x' }
+]
 const EXPORT_ERROR_MESSAGE = 'PNG 导出失败，建议下载 SVG 或 PPTX 可编辑版后插入 Word/PPT。'
 const EXPORT_TEXT_ERROR_MESSAGE = 'PNG 导出失败：未检测到可渲染的 SVG 文本，请尝试下载 SVG 或 PPTX 可编辑版'
 const EXPORT_FONT_FAMILY = 'Arial, "Microsoft YaHei", "Noto Sans SC", sans-serif'
@@ -355,9 +362,9 @@ function prepareSvgForExport(svg, options = {}) {
 
   console.log('[FlowCraft][PNG] 当前模板类型', options.templateType || 'unknown')
   console.log('[FlowCraft][PNG] 是否报告版模板', Boolean(options.isReportSvg))
-  console.log('[FlowCraft][PNG] 使用的导出尺寸选项', options.exportSize || exportDimensions.presetName || '未指定')
-  console.log('[FlowCraft][PNG] 原始 SVG width / height', originalSize.width, originalSize.height)
-  console.log('[FlowCraft][PNG] 目标导出 width / height', width, height)
+  console.log('[FlowCraft][PNG] 当前页面适配选项', options.exportSize || exportDimensions.presetName || '未指定')
+  console.log('[FlowCraft][PNG] SVG 原始 width / height', originalSize.width, originalSize.height)
+  console.log('[FlowCraft][PNG] 导出逻辑 width / height', width, height)
 
   if (options.isReportSvg) validateReportSvgForPng(clonedSvg)
   sanitizeSvgForPng(clonedSvg)
@@ -374,16 +381,46 @@ function prepareSvgForExport(svg, options = {}) {
   }
 }
 
-function createExportCanvas(width, height) {
+function normalizePngScale(scale) {
+  const parsed = Number.parseInt(String(scale ?? DEFAULT_SCALE), 10)
+  return PNG_SCALE_OPTIONS.some((option) => option.value === parsed) ? parsed : DEFAULT_SCALE
+}
+
+function resolveCanvasScale(width, height, requestedScale) {
+  let scale = normalizePngScale(requestedScale)
+  const downgradedFrom = scale
+
+  while (scale > 1 && width * height * scale * scale > MAX_CANVAS_PIXELS) {
+    scale -= 1
+  }
+
+  return {
+    scale,
+    requestedScale: downgradedFrom,
+    downgraded: scale !== downgradedFrom,
+    pixelCount: Math.ceil(width) * Math.ceil(height) * scale * scale
+  }
+}
+
+function getScaleFileLabel(scale) {
+  return PNG_SCALE_OPTIONS.find((option) => option.value === scale)?.fileLabel || `${scale}x`
+}
+
+function createExportCanvas(width, height, scale = DEFAULT_SCALE) {
   const canvas = document.createElement('canvas')
-  canvas.width = Math.ceil(width)
-  canvas.height = Math.ceil(height)
+  const exportWidth = Math.ceil(width)
+  const exportHeight = Math.ceil(height)
+  canvas.width = exportWidth * scale
+  canvas.height = exportHeight * scale
+  canvas.style.width = `${exportWidth}px`
+  canvas.style.height = `${exportHeight}px`
 
   const context = canvas.getContext('2d')
   if (!context) throw new Error('Canvas 2D context is unavailable')
 
+  context.scale(scale, scale)
   context.fillStyle = '#ffffff'
-  context.fillRect(0, 0, canvas.width, canvas.height)
+  context.fillRect(0, 0, exportWidth, exportHeight)
 
   return { canvas, context }
 }
@@ -403,8 +440,8 @@ function canvasToPngBlob(canvas) {
 
 function assertPngBlob(blob) {
   console.log('png blob created')
-  console.log('png blob type', blob?.type)
-  console.log('png blob size', blob?.size)
+  console.log('[FlowCraft][PNG] PNG blob type', blob?.type)
+  console.log('[FlowCraft][PNG] PNG blob size', blob?.size)
 
   if (!(blob instanceof Blob)) {
     throw new Error(EXPORT_ERROR_MESSAGE)
@@ -415,8 +452,9 @@ function assertPngBlob(blob) {
   }
 }
 
-function pngFileName(title) {
-  const fileName = fileNameFromTitle(title, 'png')
+function pngFileName(title, scale) {
+  const scaleLabel = getScaleFileLabel(scale)
+  const fileName = fileNameFromTitle(`${title}_${scaleLabel}`, 'png')
   return fileName.toLowerCase().endsWith('.png') ? fileName : `${fileName}.png`
 }
 
@@ -435,15 +473,19 @@ export async function downloadPng(svg, title = 'flowcraft-diagram', scaleOrOptio
 
   try {
     const { width, height, markup } = prepareSvgForExport(svg, options)
-    const { canvas, context } = createExportCanvas(width, height)
+    const scaleInfo = resolveCanvasScale(width, height, options.scale)
+    console.log('[FlowCraft][PNG] 当前 PNG 清晰度倍率', `${scaleInfo.scale}x`, scaleInfo.downgraded ? `(由 ${scaleInfo.requestedScale}x 自动降级)` : '')
+    const { canvas, context } = createExportCanvas(width, height, scaleInfo.scale)
+    console.log('[FlowCraft][PNG] canvas 实际 width / height', canvas.width, canvas.height)
 
     await renderSvgToCanvas(markup, context)
 
     const pngBlob = await canvasToPngBlob(canvas)
     assertPngBlob(pngBlob)
 
-    downloadBlob(pngBlob, pngFileName(title))
+    downloadBlob(pngBlob, pngFileName(title, scaleInfo.scale))
     console.log('png download triggered')
+    return scaleInfo
   } catch (error) {
     console.error('PNG export failed in canvg pipeline', error)
     if (error?.message && error.message.startsWith('PNG 导出失败')) {

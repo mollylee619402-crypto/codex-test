@@ -249,3 +249,17 @@ select { height: 44px; padding: 0 12px; margin-top: 8px; }
   .report-svg-preview { min-width: 0; padding: 12px; }
   .report-svg-preview svg { width: calc(var(--report-preview-zoom, 1) * 92vw); }
 }
+
+.export-options-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 10px 0 12px;
+}
+
+.export-option-tip {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+}
