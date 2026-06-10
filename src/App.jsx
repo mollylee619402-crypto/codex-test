@@ -5,7 +5,7 @@ import OutputPanel from './components/OutputPanel'
 import { DEFAULT_EXAMPLE, DIAGRAM_TYPES } from './data/examples'
 import { buildFlowSummary, parseFlowDescription } from './utils/flowParser'
 import { downloadEditablePptx } from './utils/exportPptx'
-import { downloadPng } from './utils/exportPng'
+import { PNG_SCALE_OPTIONS, downloadPng } from './utils/exportPng'
 import { downloadMermaidSource, downloadSvg } from './utils/exportSvg'
 import { generateMermaid } from './utils/mermaidGenerator'
 import { getExportDimensions, getExportSizePreset, getReportTemplateConfig, getReportTemplateExportBaseName, isReportTemplate } from './utils/reportDiagramTemplates'
@@ -61,6 +61,7 @@ function App() {
   const [isPngExporting, setIsPngExporting] = useState(false)
   const [pngButtonLabel, setPngButtonLabel] = useState('下载 PNG')
   const [exportSize, setExportSize] = useState('word-page')
+  const [pngScale, setPngScale] = useState(3)
   const feedbackTimerRef = useRef(null)
 
   const diagramTypeLabel = useMemo(
@@ -213,12 +214,12 @@ function App() {
     }
 
     setIsPngExporting(true)
-    setPngButtonLabel('正在导出 PNG...')
-    showFeedback('正在导出 PNG...', 0)
+    setPngButtonLabel('正在导出高清 PNG…')
+    showFeedback('正在导出高清 PNG…', 0)
 
     try {
-      await downloadPng(exportSvg, exportBaseName, {
-        scale: 3,
+      const result = await downloadPng(exportSvg, exportBaseName, {
+        scale: pngScale,
         targetWidth: exportPreset.targetWidth,
         exportDimensions: isReportSvg ? reportExportDimensions : null,
         exportSize,
@@ -226,11 +227,14 @@ function App() {
         isReportSvg
       })
       setPngButtonLabel('PNG 下载已开始')
-      showFeedback('PNG 下载已开始', 2600)
+      const downgradedMessage = result?.downgraded ? `（文件过大，已由 ${result.requestedScale}x 自动降级）` : ''
+      showFeedback(`PNG 下载已开始，清晰度：${result?.scale || pngScale}x${downgradedMessage}`, 3200)
     } catch (error) {
       console.error('PNG export failed', error)
       const message = error?.message || '未知错误'
-      const friendlyMessage = message.startsWith('PNG 导出失败') ? message : `PNG 导出失败：${message}`
+      const friendlyMessage = pngScale === 4
+        ? '打印级 PNG 导出失败，请尝试高清 2x 或超清 3x。'
+        : (message.startsWith('PNG 导出失败') ? message : `PNG 导出失败：${message}`)
       setPngButtonLabel('下载 PNG')
       showFeedback(`${friendlyMessage}，建议下载 SVG 或 PPTX 可编辑版后插入 Word/PPT。`, 6200)
     } finally {
@@ -296,6 +300,9 @@ function App() {
           onDownloadPng={handleDownloadPng}
           isPngExporting={isPngExporting}
           pngButtonLabel={pngButtonLabel}
+          pngScale={pngScale}
+          setPngScale={setPngScale}
+          pngScaleOptions={PNG_SCALE_OPTIONS}
           onDownloadPptx={handleDownloadPptx}
           onDownloadMermaid={handleDownloadMermaid}
           onResetExample={resetExample}

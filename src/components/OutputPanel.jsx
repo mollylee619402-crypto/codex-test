@@ -15,6 +15,9 @@ function OutputPanel({
   onDownloadPng,
   isPngExporting,
   pngButtonLabel,
+  pngScale = 3,
+  setPngScale,
+  pngScaleOptions = [],
   onDownloadPptx,
   onDownloadMermaid,
   onResetExample,
@@ -47,12 +50,22 @@ function OutputPanel({
       />
 
 
-      <label className="field-label export-size-field">
-        导出尺寸 / 页面适配
-        <select value={exportSize} onChange={(event) => setExportSize?.(event.target.value)}>
-          {Object.entries(EXPORT_SIZE_PRESETS).map(([value, preset]) => <option key={value} value={value}>{preset.label}</option>)}
-        </select>
-      </label>
+      <div className="export-options-row">
+        <label className="field-label export-size-field">
+          导出尺寸 / 页面适配
+          <select value={exportSize} onChange={(event) => setExportSize?.(event.target.value)}>
+            {Object.entries(EXPORT_SIZE_PRESETS).map(([value, preset]) => <option key={value} value={value}>{preset.label}</option>)}
+          </select>
+        </label>
+
+        <label className="field-label export-size-field">
+          PNG 清晰度 / 导出倍率
+          <select value={pngScale} onChange={(event) => setPngScale?.(Number(event.target.value))}>
+            {pngScaleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+          {isReportSvg && <span className="export-option-tip">报告版模板默认使用超清 3x。</span>}
+        </label>
+      </div>
 
       <div className="export-toolbar" aria-label="导出工具栏">
         <button type="button" className="primary" onClick={onCopyCode}>复制 Mermaid 代码</button>
