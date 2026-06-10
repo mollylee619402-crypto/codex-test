@@ -1,4 +1,4 @@
-export const REPORT_SVG_TEMPLATE_TYPES = ['site-survey', 'technical-service', '技术服务总体流程图', 'project-org']
+export const REPORT_SVG_TEMPLATE_TYPES = ['site-survey', 'technical-service', '技术服务总体流程图', 'project-org', 'organization', '项目组织架构图']
 
 export const REPORT_SVG_NOTICE = '该模板使用报告版 SVG 渲染，适合导出到 Word/PPT/Visio 后微调。'
 
@@ -34,6 +34,124 @@ export const SITE_SURVEY_REPORT_LAYOUT = {
   },
   captionY: 652
 }
+
+
+const organizationSupportNodes = ['质安部', '计划经营部', '财务部', '修复技术中心', '信息管理部', '设计研究院', '采购部', '综合管理部']
+const fieldRiskTaskNodes = [
+  '现场班组', '现场采样小组', '质量控制小组', '快速分析小组',
+  '定位测绘小组', '样品收集运输组', '数据分析组', '风险评价组',
+  '图件制作组', '报告整合组', '地质钻探组', '工程测绘组',
+  '原位测试组', '专题报告及图件组', '室内试验组', '质检组'
+]
+const feasibilityTaskNodes = ['修复工艺设计组', '废水处理工艺组', '技经组', '药剂研发组']
+
+export const ORGANIZATION_REPORT_LAYOUT = {
+  width: 1300,
+  height: 980,
+  caption: '图1-1 项目管理机构组织架构图',
+  colors: {
+    project: '#fff2cc',
+    company: '#fce4d6',
+    support: '#e2f0d9',
+    projectGroup: '#eaf4ea',
+    leader: '#d9eaf7',
+    team: '#dff0df',
+    taskBlue: '#ddebf7',
+    taskYellow: '#fff2cc',
+    taskGreen: '#e2f0d9',
+    taskOrange: '#fce4d6'
+  },
+  nodes: [
+    {
+      id: 'project',
+      label: '富拉尔基区黑龙江黑化集团污染场地调查与评估及污染治理工程可行性研究报告技术服务项目',
+      x: 110,
+      y: 28,
+      width: 1080,
+      height: 60,
+      fill: '#fff2cc',
+      fontSize: 18,
+      bold: true,
+      maxChars: 34
+    },
+    { id: 'company', label: '永清环保股份有限公司', x: 490, y: 112, width: 320, height: 46, fill: '#fce4d6', fontSize: 17, bold: true },
+    ...organizationSupportNodes.map((label, index) => ({
+      id: `support-${index + 1}`,
+      label,
+      x: 60 + index * 150,
+      y: 188,
+      width: 125,
+      height: 42,
+      fill: '#e2f0d9',
+      fontSize: 14,
+      maxChars: 7
+    })),
+    {
+      id: 'project-group',
+      label: '富拉尔基区黑龙江黑化集团污染场地调查与评估及污染治理工程可行性研究报告技术服务项目组',
+      x: 200,
+      y: 292,
+      width: 900,
+      height: 52,
+      fill: '#eaf4ea',
+      fontSize: 16,
+      bold: true,
+      maxChars: 32
+    },
+    { id: 'chief', label: '项目总负责人', x: 540, y: 370, width: 220, height: 44, fill: '#d9eaf7', fontSize: 16, bold: true },
+    { id: 'field-team', label: '场调和风评工作组', x: 250, y: 468, width: 245, height: 44, fill: '#dff0df', fontSize: 15, bold: true },
+    { id: 'design-team', label: '可研设计组', x: 805, y: 468, width: 245, height: 44, fill: '#dff0df', fontSize: 15, bold: true },
+    { id: 'field-leader', label: '场调风评负责人', x: 250, y: 538, width: 245, height: 42, fill: '#d9eaf7', fontSize: 15, bold: true },
+    { id: 'design-leader', label: '可研设计负责人', x: 805, y: 538, width: 245, height: 42, fill: '#d9eaf7', fontSize: 15, bold: true },
+    ...fieldRiskTaskNodes.map((label, index) => {
+      const col = index % 4
+      const row = Math.floor(index / 4)
+      const fills = ['#ddebf7', '#fff2cc', '#e2f0d9', '#fce4d6']
+      return {
+        id: `field-task-${index + 1}`,
+        label,
+        x: 70 + col * 155,
+        y: 650 + row * 64,
+        width: 130,
+        height: 42,
+        fill: fills[index % fills.length],
+        fontSize: 13,
+        maxChars: 7
+      }
+    }),
+    ...feasibilityTaskNodes.map((label, index) => {
+      const fills = ['#ddebf7', '#fff2cc', '#e2f0d9', '#fce4d6']
+      return {
+        id: `design-task-${index + 1}`,
+        label,
+        x: 710 + index * 140,
+        y: 682,
+        width: 120,
+        height: 54,
+        fill: fills[index % fills.length],
+        fontSize: 13,
+        maxChars: 8
+      }
+    })
+  ],
+  separators: [
+    { y: 260, label: '公司级支撑层', labelX: 1165, labelY: 214 },
+    { y: 438, label: '项目管理层', labelX: 1165, labelY: 505 },
+    { y: 622, label: '项目实施层', labelX: 1165, labelY: 755 }
+  ],
+  captionY: 940
+}
+
+ORGANIZATION_REPORT_LAYOUT.connectors = [
+  { type: 'branch', from: 'company', to: ORGANIZATION_REPORT_LAYOUT.nodes.filter((node) => node.id.startsWith('support-')).map((node) => node.id), busY: 176 },
+  { type: 'arrow', from: 'company', to: 'project-group', via: [[650, 258]] },
+  { type: 'arrow', from: 'project-group', to: 'chief' },
+  { type: 'branch', from: 'chief', to: ['field-team', 'design-team'], busY: 442 },
+  { type: 'arrow', from: 'field-team', to: 'field-leader' },
+  { type: 'arrow', from: 'design-team', to: 'design-leader' },
+  { type: 'branch', from: 'field-leader', to: fieldRiskTaskNodes.map((_, index) => `field-task-${index + 1}`), busY: 618 },
+  { type: 'branch', from: 'design-leader', to: feasibilityTaskNodes.map((_, index) => `design-task-${index + 1}`), busY: 650 }
+]
 
 export const TECHNICAL_SERVICE_REPORT_LAYOUT = {
   width: 1040,

@@ -1,6 +1,6 @@
 import pptxgen from 'pptxgenjs'
 import { fileNameFromTitle } from './fileName.js'
-import { SITE_SURVEY_REPORT_LAYOUT, TECHNICAL_SERVICE_REPORT_LAYOUT } from './reportDiagramTemplates.js'
+import { ORGANIZATION_REPORT_LAYOUT, SITE_SURVEY_REPORT_LAYOUT, TECHNICAL_SERVICE_REPORT_LAYOUT } from './reportDiagramTemplates.js'
 
 const PALETTE = {
   phase: { fill: 'F6F9FC', line: '9AAFC1' },
@@ -113,22 +113,100 @@ function drawTechnicalService(slide, pptx) {
 }
 
 function drawOrg(slide, pptx) {
-  addPhase(slide, pptx, '公司级支撑层', 0.55, 0.95, 12.2, 1.35)
-  ;['质量部', '计划经营部', '财务部', '修复技术中心', '信息管理部', '设计研究院', '采购部', '综合管理部'].forEach((label, index) => {
-    addNode(slide, pptx, label, 0.8 + index * 1.45, 1.45, 1.18, 0.38, 'org')
+  const layout = ORGANIZATION_REPORT_LAYOUT
+  const slideWidth = 13.333
+  const slideHeight = 10.05
+  const scale = Math.min(12.65 / layout.width, 9.45 / layout.height)
+  const offsetX = (slideWidth - layout.width * scale) / 2
+  const offsetY = 0.16
+  const toX = (value) => offsetX + value * scale
+  const toY = (value) => offsetY + value * scale
+  const toW = (value) => value * scale
+  const toH = (value) => value * scale
+  const nodeById = Object.fromEntries(layout.nodes.map((item) => [item.id, item]))
+  const point = (item, side = 'center') => getReportNodePoint(item, scale, offsetX, offsetY, side)
+
+  const addNativeLine = (x1, y1, x2, y2, opts = {}) => {
+    slide.addShape(pptx.ShapeType.line, {
+      x: x1,
+      y: y1,
+      w: x2 - x1,
+      h: y2 - y1,
+      line: {
+        color: opts.color || '111111',
+        width: opts.width || 0.9,
+        dash: opts.dash || 'solid',
+        beginArrowType: 'none',
+        endArrowType: opts.arrow ? 'triangle' : 'none'
+      }
+    })
+  }
+
+  layout.separators.forEach((separator) => {
+    addNativeLine(toX(50), toY(separator.y), toX(1135), toY(separator.y), { color: '333333', width: 0.8, dash: 'dash' })
+    addReportNode(
+      slide,
+      pptx,
+      separator.label,
+      toX(separator.labelX - 76),
+      toY(separator.labelY - 18),
+      toW(152),
+      toH(36),
+      { fill: 'FFFFFF', lineColor: '666666', fontSize: 8.5, bold: true }
+    )
   })
-  addNode(slide, pptx, '项目总负责人', 5.2, 2.65, 2.3, 0.5, 'leader')
-  addArrow(slide, pptx, 6.35, 2.3, 6.35, 2.65)
-  addPhase(slide, pptx, '项目实施层', 1.25, 3.45, 10.8, 2.3)
-  addNode(slide, pptx, '场调和风评工作组', 2.25, 3.75, 2.2, 0.45, 'team')
-  addNode(slide, pptx, '可研设计组', 8.0, 3.75, 2.2, 0.45, 'team')
-  addNode(slide, pptx, '场调风评负责人', 2.25, 4.45, 2.2, 0.42, 'leader')
-  addNode(slide, pptx, '可研设计负责人', 8.0, 4.45, 2.2, 0.42, 'leader')
-  ;['现场工作组', '技术支持组', '勘察工作组', '试验组'].forEach((label, index) => addNode(slide, pptx, label, 0.95 + index * 1.35, 5.13, 1.18, 0.36, 'task'))
-  ;['修复工艺设计组', '废水处理工艺组', '技经组', '药剂研发组'].forEach((label, index) => addNode(slide, pptx, label, 7.0 + index * 1.35, 5.13, 1.18, 0.36, 'task'))
-  addArrow(slide, pptx, 6.35, 3.15, 3.35, 3.75)
-  addArrow(slide, pptx, 6.35, 3.15, 9.1, 3.75)
+
+  const drawConnector = (connector) => {
+    const from = nodeById[connector.from]
+    if (!from) return
+    const start = point(from, 'bottom')
+
+    if (connector.type === 'branch') {
+      const targets = connector.to.map((id) => nodeById[id]).filter(Boolean)
+      if (!targets.length) return
+      const busY = toY(connector.busY)
+      const targetTops = targets.map((target) => point(target, 'top'))
+      const minX = Math.min(start.x, ...targetTops.map((target) => target.x))
+      const maxX = Math.max(start.x, ...targetTops.map((target) => target.x))
+      addNativeLine(start.x, start.y, start.x, busY)
+      addNativeLine(minX, busY, maxX, busY)
+      targetTops.forEach((target) => addNativeLine(target.x, busY, target.x, target.y, { arrow: true }))
+      return
+    }
+
+    const to = nodeById[connector.to]
+    if (!to) return
+    const end = point(to, 'top')
+    if (connector.via?.length) {
+      addReportPolylineArrow(slide, pptx, [start, ...connector.via.map(([x, y]) => ({ x: toX(x), y: toY(y) })), end])
+      return
+    }
+    addReportArrow(slide, pptx, start.x, start.y, end.x, end.y)
+  }
+
+  ;(layout.connectors || []).forEach(drawConnector)
+
+  layout.nodes.forEach((item) => {
+    addReportNode(
+      slide,
+      pptx,
+      item.label,
+      toX(item.x),
+      toY(item.y),
+      toW(item.width),
+      toH(item.height),
+      {
+        fill: item.fill.replace('#', '').toUpperCase(),
+        lineColor: '333333',
+        fontSize: item.fontSize ? Math.max(7, item.fontSize * 0.62) : 8,
+        bold: item.bold
+      }
+    )
+  })
+
+  addReportText(slide, layout.caption, 0.45, toY(layout.captionY) - 0.05, 12.45, 0.3, { fontSize: 12, bold: true })
 }
+
 
 function addReportText(slide, text, x, y, w, h, opts = {}) {
   slide.addText(text, {
@@ -371,6 +449,9 @@ export async function downloadEditablePptx({ mermaidCode, metadata, summary, dia
   if (diagramType === 'technical-service') {
     pptx.defineLayout({ name: 'FLOWCRAFT_TALL', width: 10, height: 19 })
     pptx.layout = 'FLOWCRAFT_TALL'
+  } else if (diagramType === 'project-org' || diagramType === 'organization' || diagramType === '项目组织架构图') {
+    pptx.defineLayout({ name: 'FLOWCRAFT_ORG', width: 13.333, height: 10.05 })
+    pptx.layout = 'FLOWCRAFT_ORG'
   } else {
     pptx.layout = 'LAYOUT_WIDE'
   }
@@ -387,11 +468,12 @@ export async function downloadEditablePptx({ mermaidCode, metadata, summary, dia
     drawSiteSurveyReport(slide, pptx, metadata)
   } else if (diagramType === 'technical-service') {
     drawTechnicalServiceReport(slide, pptx, metadata)
+  } else if (diagramType === 'project-org' || diagramType === 'organization' || diagramType === '项目组织架构图') {
+    drawOrg(slide, pptx)
   } else {
     slide.addText(metadata.title, { x: 0.45, y: 0.25, w: 12.4, h: 0.35, fontFace: 'Microsoft YaHei', fontSize: 18, bold: true, color: '17324D', align: 'center' })
 
-    if (diagramType === 'project-org') drawOrg(slide, pptx)
-    else drawLinear(slide, pptx, splitLabelsFromMermaid(mermaidCode))
+    drawLinear(slide, pptx, splitLabelsFromMermaid(mermaidCode))
 
     slide.addText(metadata.caption, { x: 0.45, y: 6.55, w: 12.4, h: 0.3, fontFace: 'Microsoft YaHei', fontSize: 12, bold: true, color: '334155', align: 'center' })
   }

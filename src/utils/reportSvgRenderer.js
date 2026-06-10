@@ -1,4 +1,4 @@
-import { SITE_SURVEY_REPORT_LAYOUT, TECHNICAL_SERVICE_REPORT_LAYOUT } from './reportDiagramTemplates.js'
+import { ORGANIZATION_REPORT_LAYOUT, SITE_SURVEY_REPORT_LAYOUT, TECHNICAL_SERVICE_REPORT_LAYOUT } from './reportDiagramTemplates.js'
 
 const FONT_FAMILY = "SimSun, 'Songti SC', 'Microsoft YaHei', serif"
 const TEXT_FILL = '#111111'
@@ -274,30 +274,83 @@ function renderTechnicalServiceSvg(metadata = {}) {
 </svg>`
 }
 
-function renderProjectOrgSvg(metadata = {}) {
-  const width = 900
-  const height = 560
-  const caption = metadata.caption || '图1-1 项目管理机构组织架构图'
+function getNodePoint(item, side = 'center') {
+  if (side === 'top') return [item.x + item.width / 2, item.y]
+  if (side === 'bottom') return [item.x + item.width / 2, item.y + item.height]
+  if (side === 'left') return [item.x, item.y + item.height / 2]
+  if (side === 'right') return [item.x + item.width, item.y + item.height / 2]
+  return [item.x + item.width / 2, item.y + item.height / 2]
+}
+
+function drawOrgConnector(connector, nodeById) {
+  const from = nodeById[connector.from]
+  if (!from) return ''
+  const [fromX, fromY] = getNodePoint(from, 'bottom')
+
+  if (connector.type === 'branch') {
+    const targets = connector.to.map((id) => nodeById[id]).filter(Boolean)
+    if (!targets.length) return ''
+    const busY = connector.busY
+    const targetCenters = targets.map((target) => getNodePoint(target, 'top')[0])
+    const minX = Math.min(fromX, ...targetCenters)
+    const maxX = Math.max(fromX, ...targetCenters)
+    return [
+      `<line x1="${fromX}" y1="${fromY}" x2="${fromX}" y2="${busY}" stroke="${STROKE}" stroke-width="1.2"/>`,
+      `<line x1="${minX}" y1="${busY}" x2="${maxX}" y2="${busY}" stroke="${STROKE}" stroke-width="1.2"/>`,
+      ...targets.map((target) => {
+        const [toX, toY] = getNodePoint(target, 'top')
+        return drawLineArrow(toX, busY, toX, toY, { strokeWidth: 1.2 })
+      })
+    ].join('')
+  }
+
+  const to = nodeById[connector.to]
+  if (!to) return ''
+  const [toX, toY] = getNodePoint(to, 'top')
+  if (connector.via?.length) {
+    return drawPolylineArrow([[fromX, fromY], ...connector.via, [toX, toY]], { strokeWidth: 1.2 })
+  }
+  return drawLineArrow(fromX, fromY, toX, toY, { strokeWidth: 1.2 })
+}
+
+function renderOrganizationSvg(metadata = {}) {
+  const layout = ORGANIZATION_REPORT_LAYOUT
+  const caption = metadata.caption || layout.caption
+  const nodeById = Object.fromEntries(layout.nodes.map((item) => [item.id, item]))
   const parts = []
-  const orgs = ['质量部', '计划经营部', '财务部', '技术中心', '设计院', '采购部']
-  parts.push(rect({ x: 60, y: 42, width: 780, height: 92, dashed: true, strokeWidth: 1.2 }))
-  parts.push(text('公司级支撑层', 450, 64, { size: 16, bold: true }))
-  orgs.forEach((label, index) => parts.push(node({ label, x: 90 + index * 120, y: 82, width: 92, height: 32 })))
-  parts.push(node({ label: '项目总负责人', x: 365, y: 180, width: 170, height: 44 }))
-  parts.push(arrow(450, 134, 450, 180))
-  parts.push(node({ label: '场调和风评工作组', x: 190, y: 290, width: 170, height: 42 }))
-  parts.push(node({ label: '可研设计组', x: 540, y: 290, width: 170, height: 42 }))
-  parts.push(arrow(450, 224, 275, 290))
-  parts.push(arrow(450, 224, 625, 290))
-  ;['现场工作组', '技术支持组', '勘察工作组'].forEach((label, index) => parts.push(node({ label, x: 115 + index * 110, y: 378, width: 92, height: 32 })))
-  ;['工艺设计组', '废水处理组', '技经组'].forEach((label, index) => parts.push(node({ label, x: 470 + index * 110, y: 378, width: 92, height: 32 })))
-  parts.push(text(caption, width / 2, 500, { size: 18, bold: true }))
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs><marker id="arrow-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="${STROKE}"/></marker></defs><rect width="${width}" height="${height}" fill="#fff"/><g>${parts.join('')}</g></svg>`
+
+  layout.separators.forEach((separator) => {
+    parts.push(`<line x1="50" y1="${separator.y}" x2="1135" y2="${separator.y}" stroke="#333333" stroke-width="1.2" stroke-dasharray="8 6"/>`)
+    parts.push(rect({ x: separator.labelX - 76, y: separator.labelY - 18, width: 152, height: 36, fill: '#ffffff', stroke: '#666666', strokeWidth: 1 }))
+    parts.push(text(separator.label, separator.labelX, separator.labelY, { size: 15, bold: true }))
+  })
+
+  ;(layout.connectors || []).forEach((connector) => {
+    parts.push(drawOrgConnector(connector, nodeById))
+  })
+
+  layout.nodes.forEach((item) => {
+    parts.push(drawNode(item, {
+      fill: item.fill,
+      stroke: '#333333',
+      textSize: item.fontSize || 14,
+      maxChars: item.maxChars || 10
+    }))
+  })
+
+  parts.push(drawCaption(caption, layout.width / 2, layout.captionY, { size: 18, bold: true }))
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${layout.width}" height="${layout.height}" viewBox="0 0 ${layout.width} ${layout.height}" role="img" aria-label="${escapeXml(caption)}">
+  <rect x="0" y="0" width="${layout.width}" height="${layout.height}" fill="#ffffff"/>
+  <g>
+    ${parts.join('\n    ')}
+  </g>
+</svg>`
 }
 
 export function renderReportSvg(templateType, input, metadata = {}) {
   if (templateType === 'site-survey' || templateType === '资料收集与踏勘流程图') return renderSiteSurveySvg(metadata)
   if (templateType === 'technical-service' || templateType === '技术服务总体流程图') return renderTechnicalServiceSvg(metadata)
-  if (templateType === 'project-org') return renderProjectOrgSvg(metadata)
+  if (templateType === 'project-org' || templateType === 'organization' || templateType === '项目组织架构图') return renderOrganizationSvg(metadata)
   return ''
 }
