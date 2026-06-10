@@ -306,6 +306,17 @@ function App() {
   }
 
 
+  const handleApplyImageImport = (recognizedText) => {
+    const nextStructuredInput = String(recognizedText || '').trim()
+    if (!nextStructuredInput) {
+      showFeedback('未识别到有效文字，暂无可应用内容。', 2600)
+      return
+    }
+    setStructuredInput(nextStructuredInput)
+    setInput(nextStructuredInput.replace(/^\s*[*-]\s*/gm, '').replace(/\n{2,}/g, '\n'))
+    showFeedback('图片识别结果已应用到结构化节点编辑区', 2600)
+  }
+
   const handleDiagramTypeChange = (nextDiagramType) => {
     setDiagramType(nextDiagramType)
     const nextReportConfig = getReportTemplateConfig(nextDiagramType)
@@ -463,6 +474,7 @@ function App() {
           onExportProjectConfig={handleExportProjectConfig}
           onCopyProjectConfigJson={handleCopyProjectConfigJson}
           onImportProjectConfig={handleImportProjectConfig}
+          onApplyImageImport={handleApplyImageImport}
         />
         <OutputPanel
           mermaidCode={mermaidCode}

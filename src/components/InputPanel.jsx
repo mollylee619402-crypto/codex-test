@@ -5,6 +5,7 @@ import StructuredEditor from './StructuredEditor'
 import TemplatePresetSelector from './TemplatePresetSelector'
 import TemplateManager from './TemplateManager'
 import ProjectConfigManager from './ProjectConfigManager'
+import ImageImportPanel from './ImageImportPanel'
 
 function InputPanel({
   input,
@@ -36,7 +37,8 @@ function InputPanel({
   onExportCurrentProjectConfig,
   onExportProjectConfig,
   onCopyProjectConfigJson,
-  onImportProjectConfig
+  onImportProjectConfig,
+  onApplyImageImport
 }) {
   const handleExampleChange = (event) => {
     const example = ENVIRONMENT_EXAMPLES.find((item) => item.id === event.target.value)
@@ -73,6 +75,8 @@ function InputPanel({
       />
 
       <ProjectConfigPanel projectConfig={projectConfig} onChange={setProjectConfig} />
+
+      <ImageImportPanel onApply={onApplyImageImport} />
 
       <StructuredEditor value={structuredInput} onChange={setStructuredInput} parserErrors={parserErrors} />
 
