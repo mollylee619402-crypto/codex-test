@@ -8,7 +8,7 @@ const DEFAULT_PREPROCESS_OPTIONS = {
   enhanceContrast: true,
   grayscale: false,
   autoCrop: true,
-  upscale: false,
+  upscale: true,
   useOriginal: false
 }
 
@@ -27,6 +27,8 @@ function ImageImportPanel({ onApply }) {
   const [isPointerInDropZone, setIsPointerInDropZone] = useState(false)
   const [preprocessOptions, setPreprocessOptions] = useState(DEFAULT_PREPROCESS_OPTIONS)
   const [preprocessNotes, setPreprocessNotes] = useState([])
+  const [qualityHints, setQualityHints] = useState([])
+  const [lastCaption, setLastCaption] = useState(null)
   const fileInputRef = useRef(null)
   const dropZoneRef = useRef(null)
   const dragDepthRef = useRef(0)
@@ -62,6 +64,8 @@ function ImageImportPanel({ onApply }) {
     setResultText('')
     setProgress(0)
     setPreprocessNotes([])
+    setQualityHints([])
+    setLastCaption(null)
     setStatus(file ? '已替换当前图片' : sourceMessage)
     resetFileInput()
   }, [file])
@@ -152,7 +156,10 @@ function ImageImportPanel({ onApply }) {
     setIsRecognizing(true)
     setProgress(0)
     setPreprocessNotes([])
-    setStatus(isRetry ? '正在重新识别文字' : '正在识别文字')
+    setQualityHints([])
+    setLastCaption(null)
+    setResultText('')
+    setStatus(isRetry ? '正在重新识别文字' : '正在初始化 OCR…')
 
     try {
       const ocrResult = await recognizeImageText(file, {
@@ -167,17 +174,23 @@ function ImageImportPanel({ onApply }) {
         }
       })
       const structuredResult = ocrToStructuredInput(ocrResult)
+      setQualityHints(structuredResult.quality || [])
+      setLastCaption(structuredResult.caption || null)
       if (!structuredResult.text.trim()) {
-        if (!resultText.trim()) setResultText('')
-        setStatus('未识别到有效文字')
+        setResultText('')
+        setStatus('OCR 识别失败：未识别到有效文字，请重新上传更清晰图片或手动输入。')
         return
       }
       setResultText(structuredResult.text)
-      setStatus(isRetry ? '识别结果已更新。' : '识别完成')
+      const suffix = structuredResult.quality?.length ? ` ${structuredResult.quality[0]}` : ''
+      setStatus(`${isRetry ? '识别结果已更新。' : '识别完成'}${suffix}`)
       setProgress(100)
     } catch (error) {
-      const message = error?.message || '请检查图片清晰度'
-      setStatus(message.includes('初始化') ? message : 'OCR 失败，请检查图片清晰度')
+      console.error('[FlowCraft OCR] error', error)
+      const message = error?.message || 'OCR 识别失败：请检查图片清晰度'
+      setResultText('')
+      setQualityHints(['识别失败，请重新上传更清晰图片或手动输入。'])
+      setStatus(message.includes('OCR') ? message : `OCR 识别失败：${message}`)
     } finally {
       setIsRecognizing(false)
     }
@@ -188,7 +201,7 @@ function ImageImportPanel({ onApply }) {
       setStatus('未识别到有效文字，暂无可应用内容。')
       return
     }
-    onApply(resultText.trim())
+    onApply({ text: resultText.trim(), caption: lastCaption })
     setStatus('识别结果已应用到当前流程。')
   }
 
@@ -198,6 +211,8 @@ function ImageImportPanel({ onApply }) {
     setStatus('已移除当前图片')
     setProgress(0)
     setPreprocessNotes([])
+    setQualityHints([])
+    setLastCaption(null)
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     setPreviewUrl('')
     resetFileInput()
@@ -282,6 +297,12 @@ function ImageImportPanel({ onApply }) {
         </div>
       )}
 
+      {qualityHints.length > 0 && (
+        <div className="preprocess-note-list">
+          {qualityHints.map((hint) => <span key={hint}>{hint}</span>)}
+        </div>
+      )}
+
       <div className="button-row compact image-import-actions">
         <button type="button" className="primary" onClick={() => handleRecognize(false)} disabled={!file || isRecognizing}>
           {isRecognizing ? '正在识别…' : '开始识别'}
@@ -304,7 +325,7 @@ function ImageImportPanel({ onApply }) {
           className="structured-editor ocr-result-editor"
           value={resultText}
           onChange={(event) => setResultText(event.target.value)}
-          placeholder={'识别完成后会生成结构化节点文本，例如：\n阶段一：进场准备阶段\n* 收到中标通知书\n* 入驻现场'}
+          placeholder={'识别完成后会生成结构化节点文本。OCR 失败时不会自动填入默认示例，请重新上传更清晰图片或手动输入。'}
         />
       </label>
     </section>

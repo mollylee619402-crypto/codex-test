@@ -306,15 +306,23 @@ function App() {
   }
 
 
-  const handleApplyImageImport = (recognizedText) => {
-    const nextStructuredInput = String(recognizedText || '').trim()
+  const handleApplyImageImport = (recognizedPayload) => {
+    const payload = typeof recognizedPayload === 'string' ? { text: recognizedPayload } : (recognizedPayload || {})
+    const nextStructuredInput = String(payload.text || '').trim()
     if (!nextStructuredInput) {
       showFeedback('未识别到有效文字，暂无可应用内容。', 2600)
       return
     }
+    if (payload.caption?.figureNumber || payload.caption?.figureTitle) {
+      setProjectConfig((current) => ({
+        ...current,
+        figureNumber: payload.caption.figureNumber || current.figureNumber,
+        figureTitle: payload.caption.figureTitle || current.figureTitle
+      }))
+    }
     setStructuredInput(nextStructuredInput)
     setInput(nextStructuredInput.replace(/^\s*[*-]\s*/gm, '').replace(/\n{2,}/g, '\n'))
-    showFeedback('图片识别结果已应用到结构化节点编辑区', 2600)
+    showFeedback(payload.caption ? '图片识别结果和图题信息已应用' : '图片识别结果已应用到结构化节点编辑区', 2600)
   }
 
   const handleDiagramTypeChange = (nextDiagramType) => {
