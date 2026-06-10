@@ -8,10 +8,12 @@ import { downloadEditablePptx } from './utils/exportPptx'
 import { PNG_SCALE_OPTIONS, downloadPng } from './utils/exportPng'
 import { downloadMermaidSource, downloadSvg } from './utils/exportSvg'
 import { generateMermaid } from './utils/mermaidGenerator'
-import { getExportDimensions, getExportSizePreset, getReportTemplateConfig, getReportTemplateExportBaseName, isReportTemplate } from './utils/reportDiagramTemplates'
+import { getExportDimensions, getExportSizePreset, getReportTemplateConfig, isReportTemplate } from './utils/reportDiagramTemplates'
 import { renderReportSvg } from './utils/reportSvgRenderer'
 import { generatePrompt } from './utils/promptGenerator'
 import { generateReportMetadata, metadataText } from './utils/reportMetadataGenerator'
+import { DEFAULT_PROJECT_CONFIG, captionFromProjectConfig, createDefaultStructuredText, mergeProjectConfig } from './utils/projectConfigDefaults.js'
+import { parseStructuredInput, structuredContentToMermaidNodes } from './utils/structuredInputParser.js'
 
 const STORAGE_KEY = 'flowcraft.templates'
 
@@ -62,6 +64,8 @@ function App() {
   const [pngButtonLabel, setPngButtonLabel] = useState('下载 PNG')
   const [exportSize, setExportSize] = useState('word-page')
   const [pngScale, setPngScale] = useState(3)
+  const [projectConfig, setProjectConfig] = useState(DEFAULT_PROJECT_CONFIG)
+  const [structuredInput, setStructuredInput] = useState(() => createDefaultStructuredText(DEFAULT_EXAMPLE.diagramType))
   const feedbackTimerRef = useRef(null)
 
   const diagramTypeLabel = useMemo(
@@ -77,9 +81,17 @@ function App() {
   const reportExportDimensions = useMemo(() => (
     reportConfig ? getExportDimensions(reportConfig, exportPreset) : null
   ), [reportConfig, exportPreset])
+  const parsedStructuredInput = useMemo(() => parseStructuredInput(structuredInput, { templateType: diagramType }), [structuredInput, diagramType])
+  const diagramContent = useMemo(() => ({ templateType: diagramType, stages: parsedStructuredInput.stages }), [diagramType, parsedStructuredInput])
+  const displayMetadata = useMemo(() => ({
+    ...metadata,
+    title: projectConfig.figureTitle || metadata.title,
+    caption: captionFromProjectConfig(projectConfig, reportConfig?.caption || metadata.caption),
+    description: `${projectConfig.projectName || '本项目'}（${projectConfig.reportUse || outputPurpose}）${metadata.description ? `：${metadata.description}` : ''}`
+  }), [metadata, projectConfig, reportConfig, outputPurpose])
   const reportSvg = useMemo(() => (
-    isReportSvg ? renderReportSvg(diagramType, input, { ...metadata, caption: reportConfig?.caption || metadata.caption }) : ''
-  ), [diagramType, input, metadata, reportConfig, isReportSvg])
+    isReportSvg ? renderReportSvg(diagramType, input, displayMetadata, projectConfig, diagramContent) : ''
+  ), [diagramType, input, displayMetadata, projectConfig, diagramContent, isReportSvg])
 
   const showFeedback = useCallback((message, duration = 1800) => {
     setFeedback(message)
@@ -89,12 +101,17 @@ function App() {
     }
   }, [])
 
-  const generate = useCallback((source = input, nextConfig = config) => {
-    const nodes = parseFlowDescription(source)
+  const generate = useCallback((source = input, nextConfig = config, nextDiagramContent = diagramContent) => {
+    const nodes = isReportTemplate(nextConfig.diagramType)
+      ? structuredContentToMermaidNodes(nextDiagramContent)
+      : parseFlowDescription(source)
     setMermaidCode(generateMermaid(nodes, nextConfig))
     setSummary(buildFlowSummary(nodes, nextConfig))
     setMetadata(generateReportMetadata(nextConfig, nodes))
-  }, [input, config])
+    if (isReportTemplate(nextConfig.diagramType) && parsedStructuredInput.errors.length) {
+      showFeedback(`结构化节点已生成，提示：${parsedStructuredInput.errors[0]}`, 3200)
+    }
+  }, [input, config, diagramContent, parsedStructuredInput.errors, showFeedback])
 
   useEffect(() => {
     setTemplates(readTemplates())
@@ -104,7 +121,8 @@ function App() {
       outputPurpose: DEFAULT_EXAMPLE.outputPurpose,
       style: DEFAULT_EXAMPLE.style
     }
-    const nodes = parseFlowDescription(DEFAULT_EXAMPLE.content)
+    const initialParsed = parseStructuredInput(createDefaultStructuredText(DEFAULT_EXAMPLE.diagramType), { templateType: DEFAULT_EXAMPLE.diagramType })
+    const nodes = isReportTemplate(DEFAULT_EXAMPLE.diagramType) ? structuredContentToMermaidNodes(initialParsed) : parseFlowDescription(DEFAULT_EXAMPLE.content)
     setMermaidCode(generateMermaid(nodes, initialConfig))
     setSummary(buildFlowSummary(nodes, initialConfig))
     setMetadata(generateReportMetadata(initialConfig, nodes))
@@ -124,8 +142,13 @@ function App() {
     setDiagramType(example.diagramType)
     setOutputPurpose(example.outputPurpose)
     setStyle(example.style)
+    const nextProjectConfig = mergeProjectConfig(projectConfig, example.projectConfig || {})
+    const nextStructuredInput = example.structuredInput || createDefaultStructuredText(example.diagramType)
+    setProjectConfig(nextProjectConfig)
+    setStructuredInput(nextStructuredInput)
+    const nextParsed = parseStructuredInput(nextStructuredInput, { templateType: example.diagramType })
     const label = DIAGRAM_TYPES.find((type) => type.value === example.diagramType)?.label || '环保工程流程图'
-    generate(example.content, { diagramType: example.diagramType, diagramTypeLabel: label, outputPurpose: example.outputPurpose, style: example.style })
+    generate(example.content, { diagramType: example.diagramType, diagramTypeLabel: label, outputPurpose: example.outputPurpose, style: example.style }, { templateType: example.diagramType, stages: nextParsed.stages })
     showFeedback('环保工程示例已加载')
   }
 
@@ -146,6 +169,8 @@ function App() {
         diagramType,
         outputPurpose,
         style,
+        projectConfig,
+        structuredInput,
         createdAt: new Date().toISOString()
       },
       ...templates
@@ -160,14 +185,34 @@ function App() {
     setDiagramType(template.diagramType)
     setOutputPurpose(template.outputPurpose)
     setStyle(template.style)
+    setProjectConfig(mergeProjectConfig(projectConfig, template.projectConfig || {}))
+    const nextStructuredInput = template.structuredInput || createDefaultStructuredText(template.diagramType)
+    setStructuredInput(nextStructuredInput)
+    const nextParsed = parseStructuredInput(nextStructuredInput, { templateType: template.diagramType })
     const label = DIAGRAM_TYPES.find((type) => type.value === template.diagramType)?.label || '基础版流程图'
-    generate(template.input, { diagramType: template.diagramType, diagramTypeLabel: label, outputPurpose: template.outputPurpose, style: template.style })
+    generate(template.input, { diagramType: template.diagramType, diagramTypeLabel: label, outputPurpose: template.outputPurpose, style: template.style }, { templateType: template.diagramType, stages: nextParsed.stages })
     showFeedback('模板已加载')
   }
 
   const handleDeleteTemplate = (id) => {
     saveTemplates(templates.filter((template) => template.id !== id))
     showFeedback('模板已删除')
+  }
+
+
+  const handleDiagramTypeChange = (nextDiagramType) => {
+    setDiagramType(nextDiagramType)
+    const nextReportConfig = getReportTemplateConfig(nextDiagramType)
+    if (nextReportConfig) {
+      const [figureNumber, ...titleParts] = nextReportConfig.caption.split(/\s+/)
+      setProjectConfig((current) => ({
+        ...current,
+        figureNumber: figureNumber || current.figureNumber,
+        figureTitle: titleParts.join(' ') || nextReportConfig.name,
+        exportBaseName: current.exportBaseName
+      }))
+      setStructuredInput(createDefaultStructuredText(nextDiagramType))
+    }
   }
 
   const copyText = async (text, message) => {
@@ -183,9 +228,15 @@ function App() {
     copyText(generatePrompt({ input, diagramTypeLabel, outputPurpose, style }), '提示词已复制')
   }
 
-  const exportBaseName = useMemo(() => (
-    isReportSvg ? getReportTemplateExportBaseName(diagramType, metadata.title) : metadata.title
-  ), [diagramType, isReportSvg, metadata.title])
+  const exportBaseName = useMemo(() => {
+    if (projectConfig.exportBaseName?.trim()) return projectConfig.exportBaseName.trim()
+    if (isReportSvg) {
+      const projectShortName = (projectConfig.projectName || '').replace(/项目$/, '') || '项目'
+      const title = projectConfig.figureTitle || displayMetadata.title
+      return `${projectShortName}_${title}`
+    }
+    return displayMetadata.title
+  }, [isReportSvg, projectConfig, displayMetadata.title])
 
   const handleDownloadSvg = () => {
     const exportSvg = isReportSvg ? reportSvg : currentSvg
@@ -244,7 +295,7 @@ function App() {
 
   const handleDownloadPptx = async () => {
     try {
-      await downloadEditablePptx({ mermaidCode, metadata: { ...metadata, title: exportBaseName }, summary, diagramType, exportSize })
+      await downloadEditablePptx({ mermaidCode, metadata: { ...displayMetadata, title: exportBaseName }, summary, diagramType, exportSize, projectConfig, diagramContent })
       const mode = reportConfig?.pptxMode === 'native' ? '' : '（该模板暂使用 SVG 图形插入，部分元素可能不可编辑）'
       showFeedback(`PPTX 下载已开始${mode}`)
     } catch (error) {
@@ -261,6 +312,11 @@ function App() {
     }
   }
 
+  const applyProjectPreset = (preset) => {
+    applyExample(preset)
+    showFeedback('项目示例已一键套用')
+  }
+
   const resetExample = () => {
     applyExample(DEFAULT_EXAMPLE)
     showFeedback('已重置示例')
@@ -274,7 +330,7 @@ function App() {
           input={input}
           setInput={setInput}
           diagramType={diagramType}
-          setDiagramType={setDiagramType}
+          setDiagramType={handleDiagramTypeChange}
           outputPurpose={outputPurpose}
           setOutputPurpose={setOutputPurpose}
           style={style}
@@ -283,6 +339,12 @@ function App() {
           onClear={() => setInput('')}
           onSaveTemplate={handleSaveTemplate}
           onLoadEnvironmentExample={applyExample}
+          projectConfig={projectConfig}
+          setProjectConfig={setProjectConfig}
+          structuredInput={structuredInput}
+          setStructuredInput={setStructuredInput}
+          parserErrors={parsedStructuredInput.errors}
+          onApplyProjectPreset={applyProjectPreset}
           templates={templates}
           onLoadTemplate={handleLoadTemplate}
           onDeleteTemplate={handleDeleteTemplate}
@@ -291,11 +353,11 @@ function App() {
           mermaidCode={mermaidCode}
           setMermaidCode={setMermaidCode}
           summary={summary}
-          metadata={metadata}
-          metadataText={metadataText(metadata)}
+          metadata={displayMetadata}
+          metadataText={metadataText(displayMetadata)}
           onCopyCode={() => copyText(mermaidCode, 'Mermaid 代码已复制')}
           onCopyPrompt={handleCopyPrompt}
-          onCopyMetadata={() => copyText(isReportSvg && reportConfig ? `图题：${reportConfig.caption}\n\n说明：本图为报告版 SVG 模板生成，适合插入 Word、PPT 或 Visio 后进行微调。${reportConfig.description ? `\n${reportConfig.description}` : ''}` : metadataText(metadata), '图题与说明已复制')}
+          onCopyMetadata={() => copyText(isReportSvg && reportConfig ? `图题：${displayMetadata.caption}\n\n项目名称：${projectConfig.projectName || '未填写'}\n报告用途：${projectConfig.reportUse || outputPurpose}\n说明：本图为报告版 SVG 模板生成，适合插入 Word、PPT 或 Visio 后进行微调。${reportConfig.description ? `\n${reportConfig.description}` : ''}` : metadataText(displayMetadata), '图题与说明已复制')}
           onDownloadSvg={handleDownloadSvg}
           onDownloadPng={handleDownloadPng}
           isPngExporting={isPngExporting}

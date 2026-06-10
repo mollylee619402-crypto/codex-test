@@ -1,6 +1,7 @@
 import pptxgen from 'pptxgenjs'
 import { fileNameFromTitle } from './fileName.js'
-import { getExportSizePreset, normalizeReportTemplateType, ORGANIZATION_REPORT_LAYOUT, SITE_SURVEY_REPORT_LAYOUT, TECHNICAL_SERVICE_REPORT_LAYOUT } from './reportDiagramTemplates.js'
+import { getExportSizePreset, normalizeReportTemplateType } from './reportDiagramTemplates.js'
+import { withOrganizationContent, withSiteSurveyContent, withTechnicalServiceContent } from './reportSvgRenderer.js'
 
 const PALETTE = {
   phase: { fill: 'F6F9FC', line: '9AAFC1' },
@@ -112,8 +113,8 @@ function drawTechnicalService(slide, pptx) {
   })
 }
 
-function drawOrg(slide, pptx, slideSize = { width: 13.333, height: 10.05 }) {
-  const layout = ORGANIZATION_REPORT_LAYOUT
+function drawOrg(slide, pptx, slideSize = { width: 13.333, height: 10.05 }, projectConfig = {}, diagramContent = {}) {
+  const layout = withOrganizationContent(projectConfig, diagramContent)
   const slideWidth = slideSize.width
   const slideHeight = slideSize.height
   const marginX = Math.min(0.45, slideWidth * 0.04)
@@ -268,8 +269,8 @@ function addReportPolylineArrow(slide, pptx, points) {
   })
 }
 
-function drawSiteSurveyReport(slide, pptx, metadata, slideSize = { width: 13.333, height: 7.5 }) {
-  const layout = SITE_SURVEY_REPORT_LAYOUT
+function drawSiteSurveyReport(slide, pptx, metadata, slideSize = { width: 13.333, height: 7.5 }, projectConfig = {}, diagramContent = {}) {
+  const layout = withSiteSurveyContent(projectConfig, diagramContent)
   const marginX = Math.min(0.6, slideSize.width * 0.06)
   const marginY = Math.min(0.25, slideSize.height * 0.06)
   const scale = Math.min((slideSize.width - marginX * 2) / layout.width, (slideSize.height - marginY * 2) / layout.height)
@@ -358,8 +359,8 @@ function addVerticalReportLabel(slide, label, x, y, fontSize = 11) {
   })
 }
 
-function drawTechnicalServiceReport(slide, pptx, metadata, slideSize = { width: 10, height: 19 }) {
-  const layout = TECHNICAL_SERVICE_REPORT_LAYOUT
+function drawTechnicalServiceReport(slide, pptx, metadata, slideSize = { width: 10, height: 19 }, projectConfig = {}, diagramContent = {}) {
+  const layout = withTechnicalServiceContent(projectConfig, diagramContent)
   const slideWidth = slideSize.width
   const slideHeight = slideSize.height
   const scale = Math.min(slideWidth / layout.width, slideHeight / layout.height)
@@ -455,7 +456,7 @@ function getPptxSlideSize(reportType, preset) {
   return { name: 'LAYOUT_WIDE', width: 13.333, height: 7.5, builtin: true }
 }
 
-export async function downloadEditablePptx({ mermaidCode, metadata, summary, diagramType, exportSize = 'word-page' }) {
+export async function downloadEditablePptx({ mermaidCode, metadata, summary, diagramType, exportSize = 'word-page', projectConfig = {}, diagramContent = {} }) {
   const pptx = new pptxgen()
   const reportType = normalizeReportTemplateType(diagramType)
   const preset = getExportSizePreset(exportSize)
@@ -476,11 +477,11 @@ export async function downloadEditablePptx({ mermaidCode, metadata, summary, dia
   slide.background = { color: 'FFFFFF' }
 
   if (reportType === 'site-survey') {
-    drawSiteSurveyReport(slide, pptx, metadata, slideSize)
+    drawSiteSurveyReport(slide, pptx, metadata, slideSize, projectConfig, diagramContent)
   } else if (reportType === 'technical-service') {
-    drawTechnicalServiceReport(slide, pptx, metadata, slideSize)
+    drawTechnicalServiceReport(slide, pptx, metadata, slideSize, projectConfig, diagramContent)
   } else if (reportType === 'organization') {
-    drawOrg(slide, pptx, slideSize)
+    drawOrg(slide, pptx, slideSize, projectConfig, diagramContent)
   } else {
     slide.addText(metadata.title, { x: 0.45, y: 0.25, w: 12.4, h: 0.35, fontFace: 'Microsoft YaHei', fontSize: 18, bold: true, color: '17324D', align: 'center' })
 

@@ -1,4 +1,8 @@
 import { DIAGRAM_TYPES, ENVIRONMENT_EXAMPLES, OUTPUT_PURPOSES, STYLE_OPTIONS } from '../data/examples'
+import { PROJECT_PRESETS } from '../utils/projectConfigDefaults.js'
+import ProjectConfigPanel from './ProjectConfigPanel'
+import StructuredEditor from './StructuredEditor'
+import TemplatePresetSelector from './TemplatePresetSelector'
 import TemplateManager from './TemplateManager'
 
 function InputPanel({
@@ -14,6 +18,12 @@ function InputPanel({
   onClear,
   onSaveTemplate,
   onLoadEnvironmentExample,
+  projectConfig,
+  setProjectConfig,
+  structuredInput,
+  setStructuredInput,
+  parserErrors,
+  onApplyProjectPreset,
   templates,
   onLoadTemplate,
   onDeleteTemplate
@@ -38,6 +48,10 @@ function InputPanel({
             {ENVIRONMENT_EXAMPLES.map((example) => <option value={example.id} key={example.id}>{example.name}</option>)}
           </select>
         </label>
+        <div className="preset-block">
+          <strong>示例一键套用</strong>
+          <TemplatePresetSelector presets={PROJECT_PRESETS} onApply={onApplyProjectPreset} />
+        </div>
       </div>
 
       <label className="field-label" htmlFor="flow-input">流程描述</label>
@@ -47,6 +61,10 @@ function InputPanel({
         onChange={(event) => setInput(event.target.value)}
         placeholder="粘贴流程描述、PRD、会议纪要、SOP、环保工程技术报告流程或项目组织架构描述……"
       />
+
+      <ProjectConfigPanel projectConfig={projectConfig} onChange={setProjectConfig} />
+
+      <StructuredEditor value={structuredInput} onChange={setStructuredInput} parserErrors={parserErrors} />
 
       <div className="form-grid">
         <label className="field-label">
