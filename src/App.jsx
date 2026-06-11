@@ -306,6 +306,17 @@ function App() {
   }
 
 
+  const handleDetectedOcrCaption = (caption = {}) => {
+    if (!caption.figureNumber && !caption.figureTitle) return
+    setProjectConfig((current) => ({
+      ...current,
+      figureNumber: caption.figureNumber || current.figureNumber,
+      figureTitle: caption.figureTitle || current.figureTitle,
+      exportBaseName: current.exportBaseName
+    }))
+    showFeedback('已从 OCR 识别结果同步图号和图题到项目参数设置', 2800)
+  }
+
   const handleApplyImageImport = (recognizedText) => {
     const nextStructuredInput = String(recognizedText || '').trim()
     if (!nextStructuredInput) {
@@ -475,6 +486,7 @@ function App() {
           onCopyProjectConfigJson={handleCopyProjectConfigJson}
           onImportProjectConfig={handleImportProjectConfig}
           onApplyImageImport={handleApplyImageImport}
+          onDetectedOcrCaption={handleDetectedOcrCaption}
         />
         <OutputPanel
           mermaidCode={mermaidCode}

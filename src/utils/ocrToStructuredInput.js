@@ -1,5 +1,7 @@
+import { cleanOcrLines } from './ocrTextCleaner.js'
+import { parseOcrLayout } from './ocrLayoutParser.js'
+
 const STAGE_CONTEXT_RE = /(阶段|流程|报告|工作阶段|工作流程|工作内容|主要工作)/
-const NOISE_RE = /^[\s\-—–→←↑↓|｜·•*#_=+~.。,，、:：;；()（）\[\]【】]+$/
 
 function normalizeText(value = '') {
   return String(value)
@@ -8,70 +10,6 @@ function normalizeText(value = '') {
     .replace(/^[\s\-—–→←↑↓|｜·•*#_=+~.。,，、:：;；]+/, '')
     .replace(/[\s\-—–→←↑↓|｜·•*#_=+~.。,，、:：;；]+$/, '')
     .trim()
-}
-
-function getBox(item = {}) {
-  const box = item.bbox || item.boundingBox || item.box || {}
-  const x0 = Number(box.x0 ?? box.left ?? item.x0 ?? 0)
-  const y0 = Number(box.y0 ?? box.top ?? item.y0 ?? 0)
-  const x1 = Number(box.x1 ?? box.right ?? item.x1 ?? x0)
-  const y1 = Number(box.y1 ?? box.bottom ?? item.y1 ?? y0)
-  return {
-    x0,
-    y0,
-    x1,
-    y1,
-    width: Math.max(0, x1 - x0),
-    height: Math.max(0, y1 - y0)
-  }
-}
-
-function isValidText(value) {
-  const text = normalizeText(value)
-  return text.length >= 2 && !NOISE_RE.test(text)
-}
-
-function extractBlocks(ocrResult = {}) {
-  const data = ocrResult.data || ocrResult
-  const candidates = Array.isArray(data.lines) && data.lines.length
-    ? data.lines
-    : Array.isArray(data.words) && data.words.length
-      ? data.words
-      : []
-
-  if (candidates.length) {
-    return candidates
-      .map((item) => ({ text: normalizeText(item.text), ...getBox(item) }))
-      .filter((item) => isValidText(item.text))
-  }
-
-  return String(data.text || '')
-    .split(/\r?\n/)
-    .map((text, index) => ({ text: normalizeText(text), x0: 0, y0: index * 24, x1: 0, y1: index * 24 + 18, width: 0, height: 18 }))
-    .filter((item) => isValidText(item.text))
-}
-
-function groupRows(blocks) {
-  const sorted = [...blocks].sort((a, b) => (a.y0 - b.y0) || (a.x0 - b.x0))
-  const rows = []
-
-  sorted.forEach((block) => {
-    const centerY = block.y0 + block.height / 2
-    const row = rows.find((item) => Math.abs(item.centerY - centerY) <= Math.max(12, item.avgHeight * 0.65, block.height * 0.65))
-    if (row) {
-      row.blocks.push(block)
-      row.centerY = row.blocks.reduce((sum, item) => sum + item.y0 + item.height / 2, 0) / row.blocks.length
-      row.avgHeight = row.blocks.reduce((sum, item) => sum + (item.height || 18), 0) / row.blocks.length
-    } else {
-      rows.push({ centerY, avgHeight: block.height || 18, blocks: [block] })
-    }
-  })
-
-  return rows
-    .sort((a, b) => a.centerY - b.centerY)
-    .map((row) => row.blocks.sort((a, b) => a.x0 - b.x0).map((block) => block.text).join(' '))
-    .map(normalizeText)
-    .filter(isValidText)
 }
 
 function isStageTitle(text) {
@@ -93,21 +31,11 @@ function formatStageTitle(text, index) {
   return `阶段${stagePrefix(index)}：${normalized}`
 }
 
-export function ocrToStructuredInput(ocrResult = {}) {
-  const blocks = extractBlocks(ocrResult)
-  const lines = groupRows(blocks)
-  const uniqueLines = lines.filter((line, index) => lines.indexOf(line) === index)
-
-  if (!uniqueLines.length) {
-    return { text: '', lines: [], blocks, hasStage: false }
-  }
-
+function formatGenericStructuredText(uniqueLines) {
   const hasStage = uniqueLines.some(isStageTitle)
   if (!hasStage) {
     return {
       text: uniqueLines.map((line) => `* ${line}`).join('\n'),
-      lines: uniqueLines,
-      blocks,
       hasStage: false
     }
   }
@@ -134,5 +62,74 @@ export function ocrToStructuredInput(ocrResult = {}) {
     hasNodeInCurrentStage = true
   })
 
-  return { text: output.join('\n').trim(), lines: uniqueLines, blocks, hasStage: true }
+  return { text: output.join('\n').trim(), hasStage: true }
+}
+
+function logOcrMetrics(metrics) {
+  console.info('[FlowCraft OCR] raw text length', metrics.rawTextLength)
+  console.info('[FlowCraft OCR] raw lines count', metrics.rawLinesCount)
+  console.info('[FlowCraft OCR] cleaned lines count', metrics.cleanedLinesCount)
+  console.info('[FlowCraft OCR] removed noise count', metrics.removedNoiseCount)
+  console.info('[FlowCraft OCR] detected caption', metrics.caption)
+  console.info('[FlowCraft OCR] structured result lines count', metrics.structuredResultLinesCount)
+  console.info('[FlowCraft OCR] quality score', metrics.qualityScore)
+}
+
+export function ocrToStructuredInput(ocrResult = {}) {
+  const data = ocrResult.data || ocrResult || {}
+  const layout = parseOcrLayout(ocrResult)
+  const rawText = String(data.text || layout.rawText || layout.lines.join('\n') || '')
+  const rawLines = layout.lines.length ? layout.lines : rawText.split(/\r?\n/)
+  const cleaned = cleanOcrLines(rawLines)
+  const uniqueLines = cleaned.lines
+
+  if (!uniqueLines.length) {
+    const emptyResult = {
+      text: '',
+      lines: [],
+      rawText,
+      rawLines,
+      blocks: layout.blocks,
+      hasStage: false,
+      caption: cleaned.caption,
+      removedNoiseCount: cleaned.removedNoiseCount,
+      qualityScore: cleaned.qualityScore
+    }
+    logOcrMetrics({
+      rawTextLength: rawText.length,
+      rawLinesCount: rawLines.filter((line) => String(line).trim()).length,
+      cleanedLinesCount: 0,
+      removedNoiseCount: cleaned.removedNoiseCount,
+      caption: cleaned.caption,
+      structuredResultLinesCount: 0,
+      qualityScore: cleaned.qualityScore
+    })
+    return emptyResult
+  }
+
+  const generic = formatGenericStructuredText(uniqueLines)
+  const text = cleaned.structuredText || generic.text
+  const result = {
+    text,
+    lines: uniqueLines,
+    rawText,
+    rawLines,
+    blocks: layout.blocks,
+    hasStage: Boolean(cleaned.structuredText) || generic.hasStage,
+    caption: cleaned.caption,
+    removedNoiseCount: cleaned.removedNoiseCount,
+    qualityScore: cleaned.qualityScore
+  }
+
+  logOcrMetrics({
+    rawTextLength: rawText.length,
+    rawLinesCount: rawLines.filter((line) => String(line).trim()).length,
+    cleanedLinesCount: uniqueLines.length,
+    removedNoiseCount: cleaned.removedNoiseCount,
+    caption: cleaned.caption,
+    structuredResultLinesCount: text.split(/\r?\n/).filter((line) => line.trim()).length,
+    qualityScore: cleaned.qualityScore
+  })
+
+  return result
 }
