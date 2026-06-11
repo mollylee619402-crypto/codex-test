@@ -3,12 +3,14 @@ import { getSupportedImageHint, isSupportedImageFile } from '../utils/imageOcrSu
 import { clipboardSupportsFiles, getImageFileFromClipboard, isEditablePasteTarget } from '../utils/clipboardImage.js'
 import { getFirstSupportedDraggedImage } from '../utils/dragDropImage.js'
 import { ocrToStructuredInput } from '../utils/ocrToStructuredInput.js'
+import { cleanOcrText } from '../utils/ocrTextCleaner.js'
 import { extractDiagramWithVision } from '../utils/visionExtract.js'
 import ImageSelectionOverlay from './ImageSelectionOverlay.jsx'
 
 const IMPORT_METHODS = {
   AI: 'ai',
   OCR: 'ocr',
+  ASSIST: 'assist-redraw',
   MANUAL: 'manual-edit'
 }
 
@@ -26,8 +28,81 @@ const DEFAULT_PREPROCESS_OPTIONS = {
   useOriginal: false
 }
 
+const ASSIST_NODE_TYPES = {
+  STAGE: 'stage',
+  NODE: 'node',
+  CHILD: 'child',
+  CAPTION: 'caption'
+}
+
+const ASSIST_NODE_LABELS = {
+  [ASSIST_NODE_TYPES.STAGE]: '阶段标题',
+  [ASSIST_NODE_TYPES.NODE]: '普通节点',
+  [ASSIST_NODE_TYPES.CHILD]: '子节点',
+  [ASSIST_NODE_TYPES.CAPTION]: '图题'
+}
+
+const AI_QUOTA_FALLBACK_MESSAGE = 'AI 识图额度不足。你可以继续使用图片辅助重绘模式：上传参考图后手动框选节点，或批量粘贴已有文字，仍可生成 SVG / PNG / PPTX。'
+const STAGE_NUMERALS = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
+
 function isPdfFile(file) {
   return file?.type === 'application/pdf' || /\.pdf$/i.test(file?.name || '')
+}
+
+function isAiQuotaError(error) {
+  const source = `${error?.message || ''} ${error?.code || ''} ${error?.status || ''}`.toLowerCase()
+  return error?.status === 429 || /quota|insufficient_quota|billing|额度|余额|超限|exceeded/.test(source)
+}
+
+function createDraftNode(type, text, parentId = '') {
+  return {
+    id: crypto.randomUUID?.() || `draft-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    type,
+    text: String(text || '').trim(),
+    parentId,
+    order: Date.now()
+  }
+}
+
+function cleanAssistLines(value = '') {
+  return cleanOcrText(value, { structure: false }).lines
+}
+
+
+function captionFromAssistText(text = '') {
+  const normalized = String(text || '').trim()
+  const match = normalized.match(/^(图\s*[\d０-９]+(?:\s*[.．。\-－—–]\s*[\d０-９]+)*)\s*[-—–:：]?\s*(.*)$/)
+  if (!match) return { figureNumber: '', figureTitle: normalized }
+  return {
+    figureNumber: match[1].replace(/\s+/g, '').replace(/[．。]/g, '.').replace(/[－—–]/g, '-'),
+    figureTitle: match[2].trim()
+  }
+}
+
+function formatDraftNodes(draftNodes = []) {
+  const output = []
+  const nodes = draftNodes.filter((node) => node.type !== ASSIST_NODE_TYPES.CAPTION && node.text.trim())
+  let stageIndex = 0
+
+  nodes.forEach((node, index) => {
+    if (node.type === ASSIST_NODE_TYPES.STAGE) {
+      stageIndex += 1
+      if (output.length) output.push('')
+      output.push(`阶段${STAGE_NUMERALS[stageIndex - 1] || stageIndex}：${node.text.trim().replace(/^阶段[一二三四五六七八九十\d]+[:：]/, '')}`)
+      return
+    }
+
+    if (node.type === ASSIST_NODE_TYPES.CHILD) {
+      const previousParentIndex = [...nodes.slice(0, index)].reverse().findIndex((item) => item.type === ASSIST_NODE_TYPES.NODE && item.text.trim())
+      if (previousParentIndex < 0 && !node.parentId) output.push(`* ${node.text.trim()}`)
+      else output.push(`  * ${node.text.trim()}`)
+      return
+    }
+
+    output.push(`* ${node.text.trim()}`)
+  })
+
+  return output.join('\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
 function ImageImportPanel({ onApply, onDetectedCaption, diagramType, projectConfig, onTemplateTypeDetected, onVisionResult }) {
@@ -54,10 +129,17 @@ function ImageImportPanel({ onApply, onDetectedCaption, diagramType, projectConf
   const [aiResult, setAiResult] = useState(null)
   const [aiWarnings, setAiWarnings] = useState([])
   const [isAiRecognizing, setIsAiRecognizing] = useState(false)
+  const [draftNodes, setDraftNodes] = useState([])
+  const [assistSelectionText, setAssistSelectionText] = useState('')
+  const [assistBatchText, setAssistBatchText] = useState('')
+  const [assistZoom, setAssistZoom] = useState('fit')
+  const [assistTool, setAssistTool] = useState('select')
+  const [isPanning, setIsPanning] = useState(false)
   const imagePreviewRef = useRef(null)
   const fileInputRef = useRef(null)
   const dropZoneRef = useRef(null)
   const dragDepthRef = useRef(0)
+  const panStartRef = useRef(null)
 
   useEffect(() => () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl)
@@ -98,6 +180,9 @@ function ImageImportPanel({ onApply, onDetectedCaption, diagramType, projectConf
     setQualityHint('')
     setAiResult(null)
     setAiWarnings([])
+    setDraftNodes([])
+    setAssistSelectionText('')
+    setAssistBatchText('')
     setImageNaturalSize({ width: 0, height: 0 })
     setStatus(file ? '已替换当前图片' : sourceMessage)
     resetFileInput()
@@ -386,10 +471,139 @@ function ImageImportPanel({ onApply, onDetectedCaption, diagramType, projectConf
       const message = error?.message || 'AI 识图请求失败。网络异常，请稍后重试。'
       setAiResult(null)
       setAiWarnings([])
-      setStatus(message)
+      if (isAiQuotaError(error)) {
+        setStatus(AI_QUOTA_FALLBACK_MESSAGE)
+      } else {
+        setStatus(message)
+      }
     } finally {
       setIsAiRecognizing(false)
     }
+  }
+
+
+  const recognizeAssistSelection = async () => {
+    if (!file) {
+      setStatus(`请先上传图片。${getSupportedImageHint()}`)
+      return
+    }
+    if (!manualSelection || manualSelection.width < 8 || manualSelection.height < 8) {
+      setStatus('请先在参考图上框选一个节点区域。')
+      return
+    }
+
+    setIsRecognizing(true)
+    setProgress(0)
+    setStatus('正在对选区放大 3x 并进行局部 OCR…')
+    const { cropImageRegion } = await import('../utils/flowBoxDetector.js')
+    const { recognizeImageText } = await import('../utils/imageOcr.js')
+
+    try {
+      const croppedFile = await cropImageRegion(file, manualSelection, { padding: 10, scale: 3, grayscale: true, enhanceContrast: true, binarize: false })
+      const ocrResult = await recognizeImageText(croppedFile, {
+        preprocessOptions: { enhanceContrast: true, grayscale: true, autoCrop: false, upscale: false, useOriginal: false },
+        onProgress: ({ status: nextStatus, progress: nextProgress }) => {
+          setStatus(nextStatus || '正在识别选区文字…')
+          setProgress(nextProgress || 0)
+        }
+      })
+      const cleaned = cleanAssistLines(ocrResult?.data?.text || '').join(' ')
+      setAssistSelectionText(cleaned)
+      setRawOcrText(ocrResult?.data?.text || '')
+      setStatus(cleaned ? '选区 OCR 完成，可人工修改后添加到节点草稿区。' : '选区 OCR 未识别到有效文字，请手动输入后添加。')
+      setProgress(100)
+    } catch (error) {
+      setAssistSelectionText('')
+      setStatus(`${error?.message || '局部 OCR 失败'}。可直接手动输入节点文字，不影响后续生成。`)
+      setProgress(0)
+    } finally {
+      setIsRecognizing(false)
+    }
+  }
+
+  const addAssistDraftNode = (type, text = assistSelectionText) => {
+    const cleanedText = cleanAssistLines(text).join(' ') || String(text || '').trim()
+    if (!cleanedText) {
+      setStatus('请先输入或识别节点文字。')
+      return
+    }
+    setDraftNodes((current) => [...current, createDraftNode(type, cleanedText)])
+    if (type === ASSIST_NODE_TYPES.CAPTION) onDetectedCaption?.(captionFromAssistText(cleanedText))
+    setAssistSelectionText('')
+    setManualSelection(null)
+    setStatus(`已添加为${ASSIST_NODE_LABELS[type]}。可继续框选下一个区域。`)
+  }
+
+  const updateDraftNode = (id, patch) => {
+    setDraftNodes((current) => current.map((node) => (node.id === id ? { ...node, ...patch } : node)))
+  }
+
+  const removeDraftNode = (id) => {
+    setDraftNodes((current) => current.filter((node) => node.id !== id))
+  }
+
+  const moveDraftNode = (id, direction) => {
+    setDraftNodes((current) => {
+      const index = current.findIndex((node) => node.id === id)
+      const nextIndex = index + direction
+      if (index < 0 || nextIndex < 0 || nextIndex >= current.length) return current
+      const next = [...current]
+      const [item] = next.splice(index, 1)
+      next.splice(nextIndex, 0, item)
+      return next.map((node, order) => ({ ...node, order: order + 1 }))
+    })
+  }
+
+  const generateAssistStructuredText = () => {
+    const text = formatDraftNodes(draftNodes)
+    if (!text) {
+      setStatus('节点草稿区为空，请先框选或批量粘贴文本。')
+      return ''
+    }
+    setResultText(text)
+    setRecognizedLineCount(draftNodes.filter((node) => node.text.trim()).length)
+    const caption = draftNodes.find((node) => node.type === ASSIST_NODE_TYPES.CAPTION && node.text.trim())
+    if (caption) onDetectedCaption?.(captionFromAssistText(caption.text.trim()))
+    setStatus('已生成结构化文本，可应用到当前流程。')
+    return text
+  }
+
+  const applyAssistStructuredText = () => {
+    const text = resultText.trim() || generateAssistStructuredText()
+    if (!text.trim()) return
+    onApply(text.trim(), null)
+    setStatus('已将图片辅助重绘内容应用到当前流程。')
+  }
+
+  const importBatchTextAsDraftNodes = () => {
+    const lines = cleanAssistLines(assistBatchText)
+    if (!lines.length) {
+      setStatus('批量粘贴文本中没有可用行，请检查内容。')
+      return
+    }
+    setDraftNodes((current) => [...current, ...lines.map((line) => createDraftNode(ASSIST_NODE_TYPES.NODE, line))])
+    setAssistBatchText('')
+    setStatus(`已从批量粘贴文本生成 ${lines.length} 个节点草稿，可继续调整阶段 / 子节点。`)
+  }
+
+  const handleAssistPanStart = (event) => {
+    if (recognitionMethod !== IMPORT_METHODS.ASSIST || assistTool !== 'pan') return
+    const box = event.currentTarget
+    panStartRef.current = { x: event.clientX, y: event.clientY, left: box.scrollLeft, top: box.scrollTop }
+    setIsPanning(true)
+  }
+
+  const handleAssistPanMove = (event) => {
+    if (!panStartRef.current) return
+    event.preventDefault()
+    const box = event.currentTarget
+    box.scrollLeft = panStartRef.current.left - (event.clientX - panStartRef.current.x)
+    box.scrollTop = panStartRef.current.top - (event.clientY - panStartRef.current.y)
+  }
+
+  const handleAssistPanEnd = () => {
+    panStartRef.current = null
+    setIsPanning(false)
   }
 
   const handleApply = () => {
@@ -415,6 +629,9 @@ function ImageImportPanel({ onApply, onDetectedCaption, diagramType, projectConf
     setQualityHint('')
     setAiResult(null)
     setAiWarnings([])
+    setDraftNodes([])
+    setAssistSelectionText('')
+    setAssistBatchText('')
     setImageNaturalSize({ width: 0, height: 0 })
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     setPreviewUrl('')
@@ -481,9 +698,10 @@ function ImageImportPanel({ onApply, onDetectedCaption, diagramType, projectConf
         <div className="ocr-mode-options">
           <label><input type="radio" name="recognition-method" checked={recognitionMethod === IMPORT_METHODS.AI} onChange={() => setRecognitionMethod(IMPORT_METHODS.AI)} /> AI 识图推荐</label>
           <label><input type="radio" name="recognition-method" checked={recognitionMethod === IMPORT_METHODS.OCR} onChange={() => setRecognitionMethod(IMPORT_METHODS.OCR)} /> 本地 OCR 备用</label>
+          <label><input type="radio" name="recognition-method" checked={recognitionMethod === IMPORT_METHODS.ASSIST} onChange={() => setRecognitionMethod(IMPORT_METHODS.ASSIST)} /> 图片辅助重绘</label>
           <label><input type="radio" name="recognition-method" checked={recognitionMethod === IMPORT_METHODS.MANUAL} onChange={() => setRecognitionMethod(IMPORT_METHODS.MANUAL)} /> 手动编辑</label>
         </div>
-        <p>AI 识图会将图片发送至服务端模型处理，请勿上传包含敏感信息或涉密内容的图片。</p>
+        <p>{recognitionMethod === IMPORT_METHODS.ASSIST ? '无需 API 额度。上传参考图后，可手动框选节点、局部 OCR、快速整理为结构化流程内容，再生成 SVG / PNG / PPTX。' : 'AI 识图会将图片发送至服务端模型处理，请勿上传包含敏感信息或涉密内容的图片。'}</p>
       </div>
 
       <p className="pdf-import-tip">PDF 识别功能即将支持。当前建议先将 PDF 中的流程图截图后粘贴或上传。</p>
@@ -508,7 +726,7 @@ function ImageImportPanel({ onApply, onDetectedCaption, diagramType, projectConf
         </div>
       </div>}
 
-      {previewUrl && (
+      {previewUrl && recognitionMethod !== IMPORT_METHODS.ASSIST && (
         <div className="image-preview-box">
           <div className="image-preview-stage">
             <img
@@ -535,6 +753,101 @@ function ImageImportPanel({ onApply, onDetectedCaption, diagramType, projectConf
         </div>
       )}
 
+      {recognitionMethod === IMPORT_METHODS.ASSIST && (
+        <div className="assist-redraw-layout">
+          <div className="assist-reference-panel">
+            <div className="assist-toolbar">
+              <strong>参考图区域</strong>
+              <button type="button" onClick={() => setAssistZoom('fit')}>适应宽度</button>
+              <button type="button" onClick={() => setAssistZoom('100')}>100%</button>
+              <button type="button" onClick={() => setAssistZoom((current) => String(Math.min(2.5, (Number(current) || 1) + 0.2)))}>放大</button>
+              <button type="button" onClick={() => setAssistZoom((current) => String(Math.max(0.4, (Number(current) || 1) - 0.2)))}>缩小</button>
+              <button type="button" className={assistTool === 'select' ? 'is-active' : ''} onClick={() => setAssistTool('select')}>框选节点</button>
+              <button type="button" className={assistTool === 'pan' ? 'is-active' : ''} onClick={() => setAssistTool('pan')}>拖拽平移</button>
+            </div>
+            {previewUrl ? (
+              <div
+                className={`assist-image-box ${assistTool === 'pan' ? 'is-pan-mode' : ''} ${isPanning ? 'is-panning' : ''}`}
+                onPointerDown={handleAssistPanStart}
+                onPointerMove={handleAssistPanMove}
+                onPointerUp={handleAssistPanEnd}
+                onPointerLeave={handleAssistPanEnd}
+              >
+                <div className="image-preview-stage assist-image-stage">
+                  <img
+                    ref={imagePreviewRef}
+                    src={previewUrl}
+                    alt="图片辅助重绘参考图"
+                    style={{ width: assistZoom === 'fit' ? '100%' : assistZoom === '100' ? `${imageNaturalSize.width || 900}px` : `${Math.round((imageNaturalSize.width || 900) * Number(assistZoom || 1))}px`, maxWidth: assistZoom === 'fit' ? '100%' : 'none', maxHeight: 'none' }}
+                    onLoad={(event) => setImageNaturalSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })}
+                  />
+                  <ImageSelectionOverlay
+                    imgRef={imagePreviewRef}
+                    enabled={assistTool === 'select' && !isRecognizing && !isAiRecognizing}
+                    selection={manualSelection}
+                    onSelectionChange={setManualSelection}
+                    boxes={[]}
+                    naturalSize={imageNaturalSize}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="assist-empty-reference">请先上传、粘贴或拖拽一张参考流程图。</div>
+            )}
+            <div className="assist-selection-panel">
+              <div className="assist-selection-summary">
+                <span>选区：{manualSelection ? `x=${manualSelection.x}, y=${manualSelection.y}, w=${manualSelection.width}, h=${manualSelection.height}` : '尚未框选'}</span>
+                <button type="button" onClick={recognizeAssistSelection} disabled={!file || !manualSelection || isRecognizing}>识别选区文字</button>
+                <button type="button" onClick={() => setManualSelection(null)} disabled={!manualSelection || isRecognizing}>清除选区</button>
+              </div>
+              <label className="field-label">选区文字（可手动修改）
+                <textarea className="structured-editor assist-selection-text" value={assistSelectionText} onChange={(event) => setAssistSelectionText(event.target.value)} placeholder="局部 OCR 不准时，可直接手动输入节点文字。" />
+              </label>
+              <div className="button-row compact">
+                <button type="button" onClick={() => addAssistDraftNode(ASSIST_NODE_TYPES.NODE)}>添加为节点</button>
+                <button type="button" onClick={() => addAssistDraftNode(ASSIST_NODE_TYPES.CHILD)}>添加为子节点</button>
+                <button type="button" onClick={() => addAssistDraftNode(ASSIST_NODE_TYPES.STAGE)}>添加为阶段标题</button>
+                <button type="button" onClick={() => addAssistDraftNode(ASSIST_NODE_TYPES.CAPTION)}>添加为图题</button>
+              </div>
+            </div>
+          </div>
+
+          <div className="assist-draft-panel">
+            <div className="assist-draft-heading">
+              <strong>节点草稿区</strong>
+              <span>{draftNodes.length} 项</span>
+            </div>
+            <label className="field-label">批量粘贴文本
+              <textarea className="structured-editor assist-batch-text" value={assistBatchText} onChange={(event) => setAssistBatchText(event.target.value)} placeholder="可粘贴其他 OCR 工具、ChatGPT 网页、微信截图识别或 Word 中复制的多行文字。" />
+            </label>
+            <div className="button-row compact">
+              <button type="button" onClick={importBatchTextAsDraftNodes}>清洗并生成节点草稿</button>
+              <button type="button" onClick={() => setAssistBatchText('')}>清空粘贴区</button>
+            </div>
+            <div className="assist-draft-list">
+              {draftNodes.length ? draftNodes.map((node, index) => (
+                <article className="assist-draft-item" key={node.id}>
+                  <select value={node.type} onChange={(event) => updateDraftNode(node.id, { type: event.target.value })} aria-label="节点类型">
+                    {Object.entries(ASSIST_NODE_LABELS).map(([type, label]) => <option value={type} key={type}>{label}</option>)}
+                  </select>
+                  <textarea value={node.text} onChange={(event) => updateDraftNode(node.id, { text: event.target.value })} aria-label="节点文字" />
+                  <div className="assist-draft-actions">
+                    <button type="button" onClick={() => moveDraftNode(node.id, -1)} disabled={index === 0}>上移</button>
+                    <button type="button" onClick={() => moveDraftNode(node.id, 1)} disabled={index === draftNodes.length - 1}>下移</button>
+                    <button type="button" onClick={() => removeDraftNode(node.id)}>删除</button>
+                  </div>
+                </article>
+              )) : <p className="assist-empty-draft">可通过左侧框选节点，或在上方批量粘贴多行文本生成草稿。</p>}
+            </div>
+            <div className="button-row compact assist-apply-actions">
+              <button type="button" className="primary" onClick={generateAssistStructuredText}>生成结构化文本</button>
+              <button type="button" onClick={applyAssistStructuredText} disabled={!draftNodes.length && !resultText.trim()}>应用到当前流程</button>
+              <button type="button" onClick={() => setDraftNodes([])} disabled={!draftNodes.length}>清空草稿</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {preprocessNotes.length > 0 && (
         <div className="preprocess-note-list">
           {preprocessNotes.map((note) => <span key={note}>{note}</span>)}
@@ -542,14 +855,15 @@ function ImageImportPanel({ onApply, onDetectedCaption, diagramType, projectConf
       )}
 
       <div className="button-row compact image-import-actions">
-        <button type="button" className="primary" onClick={handleAiRecognize} disabled={!file || isAiRecognizing || isRecognizing}>
+        {recognitionMethod === IMPORT_METHODS.AI && <button type="button" className="primary" onClick={handleAiRecognize} disabled={!file || isAiRecognizing || isRecognizing}>
           {isAiRecognizing ? 'AI 识图中…' : 'AI 识图生成'}
-        </button>
-        <button type="button" onClick={() => handleRecognize(false)} disabled={!file || isRecognizing || isDetecting || isAiRecognizing}>本地 OCR 识别</button>
+        </button>}
+        {recognitionMethod === IMPORT_METHODS.OCR && <button type="button" onClick={() => handleRecognize(false)} disabled={!file || isRecognizing || isDetecting || isAiRecognizing}>本地 OCR 识别</button>}
         {recognitionMethod === IMPORT_METHODS.OCR && <button type="button" onClick={() => detectBoxes()} disabled={!file || isRecognizing || isDetecting || isAiRecognizing}>检测流程框</button>}
         {recognitionMethod === IMPORT_METHODS.OCR && <button type="button" onClick={() => handleRecognize(true)} disabled={!file || isRecognizing || isDetecting || isAiRecognizing}>重新 OCR</button>}
         {recognitionMethod === IMPORT_METHODS.OCR && <button type="button" onClick={() => setManualSelection(null)} disabled={!manualSelection || isRecognizing}>清除选区</button>}
-        <button type="button" onClick={handleApply} disabled={!resultText.trim() || isRecognizing || isAiRecognizing}>应用到当前流程</button>
+        {status === AI_QUOTA_FALLBACK_MESSAGE && <button type="button" className="primary" onClick={() => setRecognitionMethod(IMPORT_METHODS.ASSIST)}>切换到图片辅助重绘</button>}
+        {recognitionMethod !== IMPORT_METHODS.ASSIST && <button type="button" onClick={handleApply} disabled={!resultText.trim() || isRecognizing || isAiRecognizing}>应用到当前流程</button>}
         <button type="button" onClick={handleRemoveImage} disabled={!file || isRecognizing || isAiRecognizing}>移除当前图片</button>
       </div>
 
@@ -561,7 +875,7 @@ function ImageImportPanel({ onApply, onDetectedCaption, diagramType, projectConf
       )}
 
       <label className="field-label">
-        AI / OCR 结构化结果编辑
+        {recognitionMethod === IMPORT_METHODS.ASSIST ? '图片辅助重绘结构化结果编辑' : 'AI / OCR 结构化结果编辑'}
         <textarea
           className="structured-editor ocr-result-editor"
           value={resultText}

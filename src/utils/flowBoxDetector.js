@@ -139,15 +139,29 @@ export async function cropImageRegion(file, region, options = {}) {
   context.imageSmoothingQuality = 'high'
   context.drawImage(canvas, crop.x, crop.y, crop.width, crop.height, 0, 0, out.width, out.height)
 
-  if (options.binarize !== false) {
+  if (options.grayscale || options.enhanceContrast || options.binarize !== false) {
     const imageData = context.getImageData(0, 0, out.width, out.height)
     const data = imageData.data
+    const contrastFactor = options.enhanceContrast ? 1.42 : 1
     for (let i = 0; i < data.length; i += 4) {
       const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114
-      const value = gray < 172 ? 0 : 255
-      data[i] = value
-      data[i + 1] = value
-      data[i + 2] = value
+      if (options.binarize !== false) {
+        const value = gray < 172 ? 0 : 255
+        data[i] = value
+        data[i + 1] = value
+        data[i + 2] = value
+      } else {
+        const enhanced = Math.max(0, Math.min(255, (gray - 128) * contrastFactor + 128))
+        if (options.grayscale) {
+          data[i] = enhanced
+          data[i + 1] = enhanced
+          data[i + 2] = enhanced
+        } else {
+          data[i] = Math.max(0, Math.min(255, (data[i] - 128) * contrastFactor + 128))
+          data[i + 1] = Math.max(0, Math.min(255, (data[i + 1] - 128) * contrastFactor + 128))
+          data[i + 2] = Math.max(0, Math.min(255, (data[i + 2] - 128) * contrastFactor + 128))
+        }
+      }
     }
     context.putImageData(imageData, 0, 0)
   }
