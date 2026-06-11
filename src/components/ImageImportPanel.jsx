@@ -152,10 +152,12 @@ function ImageImportPanel({ onApply }) {
     setIsRecognizing(true)
     setProgress(0)
     setPreprocessNotes([])
+    setResultText('')
     setStatus(isRetry ? '正在重新识别文字' : '正在识别文字')
 
     try {
       const { recognizeImageText } = await import('../utils/imageOcr.js')
+      let warningMessage = ''
       const ocrResult = await recognizeImageText(file, {
         preprocessOptions,
         onPreprocess: ({ status: nextStatus, notes }) => {
@@ -165,6 +167,10 @@ function ImageImportPanel({ onApply }) {
         onProgress: ({ status: nextStatus, progress: nextProgress }) => {
           setStatus(nextStatus || '正在识别文字')
           setProgress(nextProgress || 0)
+        },
+        onWarning: (message) => {
+          warningMessage = message
+          setStatus(message)
         }
       })
       const structuredResult = ocrToStructuredInput(ocrResult)
@@ -174,11 +180,13 @@ function ImageImportPanel({ onApply }) {
         return
       }
       setResultText(structuredResult.text)
-      setStatus(isRetry ? '识别结果已更新。' : '识别完成')
+      setStatus(warningMessage || ocrResult.warning || (isRetry ? '识别结果已更新。' : '识别完成'))
       setProgress(100)
     } catch (error) {
       const message = error?.message || '请检查图片清晰度'
-      setStatus(message.includes('初始化') ? message : 'OCR 失败，请检查图片清晰度')
+      setResultText('')
+      setProgress(0)
+      setStatus(message.includes('OCR 模块加载失败') || message.includes('初始化') ? message : 'OCR 失败，请检查图片清晰度')
     } finally {
       setIsRecognizing(false)
     }

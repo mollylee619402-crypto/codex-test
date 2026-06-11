@@ -13,7 +13,8 @@
     "react": "latest",
     "react-dom": "latest",
     "mermaid": "latest",
-    "pptxgenjs": "latest"
+    "pptxgenjs": "latest",
+    "tesseract.js": "^6.0.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "latest",
