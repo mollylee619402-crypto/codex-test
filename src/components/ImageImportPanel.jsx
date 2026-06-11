@@ -245,14 +245,19 @@ function ImageImportPanel({ onApply, onDetectedCaption }) {
     const { cropImageRegion } = await import('../utils/flowBoxDetector.js')
     const { recognizeImageText } = await import('../utils/imageOcr.js')
     const croppedFile = await cropImageRegion(file, manualSelection, { padding: 8, scale: 1.8, binarize: true })
+    let warningMessage = ''
     const ocrResult = await recognizeImageText(croppedFile, {
       preprocessOptions: { enhanceContrast: true, grayscale: true, autoCrop: false, upscale: false, useOriginal: false },
       onProgress: ({ status: nextStatus, progress: nextProgress }) => {
         setStatus(nextStatus || '正在识别手动框选区域…')
         setProgress(nextProgress || 0)
+      },
+      onWarning: (message) => {
+        warningMessage = message
+        setStatus(message)
       }
     })
-    applyStructuredResult(ocrToStructuredInput(ocrResult), '手动框选识别完成，请人工校对。')
+    applyStructuredResult(ocrToStructuredInput(ocrResult), '手动框选识别完成，请人工校对。', warningMessage || ocrResult.warning)
   }
 
   const recognizeSegmentedImage = async () => {
@@ -265,14 +270,20 @@ function ImageImportPanel({ onApply, onDetectedCaption }) {
     }
     if (boxes.length > 30) setQualityHint('检测到区域较多，建议手动框选关键区域。默认仅识别前 20 个高置信度框。')
     const { recognizeSegmentedImage: recognizeSegments } = await import('../utils/segmentedOcr.js')
+    let warningMessage = ''
     const segmentedResult = await recognizeSegments(file, boxes, {
       maxSegments: 20,
       onSegmentStart: ({ index, total }) => {
         setStatus(`正在识别第 ${index} / ${total} 个区域…`)
         setProgress(Math.round(((index - 1) / Math.max(1, total)) * 100))
       },
-      onProgress: ({ progress: nextProgress }) => {
+      onProgress: ({ status: nextStatus, progress: nextProgress }) => {
+        if (nextStatus) setStatus(nextStatus)
         setProgress(nextProgress || 0)
+      },
+      onWarning: (message) => {
+        warningMessage = message
+        setStatus(message)
       },
       onSegmentComplete: (detail) => {
         setSegmentDetails((current) => [...current, detail])
@@ -290,7 +301,7 @@ function ImageImportPanel({ onApply, onDetectedCaption }) {
     setResultText(segmentedResult.text)
     const hint = segmentedResult.nodes.length < 3 ? '识别结果较少，建议手动框选关键区域。' : '分块识别完成。'
     setQualityHint(hint)
-    setStatus(hint)
+    setStatus(warningMessage || hint)
     setProgress(100)
   }
 
