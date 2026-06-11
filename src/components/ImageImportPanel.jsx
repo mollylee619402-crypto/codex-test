@@ -16,12 +16,14 @@ function isPdfFile(file) {
   return file?.type === 'application/pdf' || /\.pdf$/i.test(file?.name || '')
 }
 
-function ImageImportPanel({ onApply }) {
+function ImageImportPanel({ onApply, onDetectedCaption }) {
   const [file, setFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState('')
   const [status, setStatus] = useState('')
   const [progress, setProgress] = useState(0)
   const [resultText, setResultText] = useState('')
+  const [rawOcrText, setRawOcrText] = useState('')
+  const [recognizedLineCount, setRecognizedLineCount] = useState(0)
   const [isRecognizing, setIsRecognizing] = useState(false)
   const [isDragActive, setIsDragActive] = useState(false)
   const [isPointerInDropZone, setIsPointerInDropZone] = useState(false)
@@ -60,6 +62,8 @@ function ImageImportPanel({ onApply }) {
     })
     setFile(nextFile)
     setResultText('')
+    setRawOcrText('')
+    setRecognizedLineCount(0)
     setProgress(0)
     setPreprocessNotes([])
     setStatus(file ? '已替换当前图片' : sourceMessage)
@@ -153,6 +157,8 @@ function ImageImportPanel({ onApply }) {
     setProgress(0)
     setPreprocessNotes([])
     setResultText('')
+    setRawOcrText('')
+    setRecognizedLineCount(0)
     setStatus(isRetry ? '正在重新识别文字' : '正在识别文字')
 
     try {
@@ -174,17 +180,25 @@ function ImageImportPanel({ onApply }) {
         }
       })
       const structuredResult = ocrToStructuredInput(ocrResult)
+      setRawOcrText(structuredResult.rawText || structuredResult.rawLines?.join('\n') || '')
+      setRecognizedLineCount(structuredResult.lines?.length || 0)
+      if (structuredResult.caption?.figureNumber || structuredResult.caption?.figureTitle) {
+        onDetectedCaption?.(structuredResult.caption)
+      }
       if (!structuredResult.text.trim()) {
         if (!resultText.trim()) setResultText('')
         setStatus('未识别到有效文字')
         return
       }
       setResultText(structuredResult.text)
-      setStatus(warningMessage || ocrResult.warning || (isRetry ? '识别结果已更新。' : '识别完成'))
+      const qualityTip = (structuredResult.lines?.length || 0) < 3 ? '识别结果较少，建议上传更清晰截图，或手动补充节点。' : '已完成 OCR，并自动清洗为结构化节点，请人工校对。'
+      setStatus(warningMessage || ocrResult.warning || qualityTip)
       setProgress(100)
     } catch (error) {
       const message = error?.message || '请检查图片清晰度'
       setResultText('')
+      setRawOcrText('')
+      setRecognizedLineCount(0)
       setProgress(0)
       setStatus(message.includes('OCR 模块加载失败') || message.includes('初始化') ? message : 'OCR 失败，请检查图片清晰度')
     } finally {
@@ -198,12 +212,14 @@ function ImageImportPanel({ onApply }) {
       return
     }
     onApply(resultText.trim())
-    setStatus('识别结果已应用到当前流程。')
+    setStatus('已将清洗后的识别结果应用到当前流程。')
   }
 
   const handleRemoveImage = () => {
     setFile(null)
     setResultText('')
+    setRawOcrText('')
+    setRecognizedLineCount(0)
     setStatus('已移除当前图片')
     setProgress(0)
     setPreprocessNotes([])
@@ -308,7 +324,7 @@ function ImageImportPanel({ onApply }) {
       )}
 
       <label className="field-label">
-        识别结果编辑
+        清洗后的结构化结果编辑
         <textarea
           className="structured-editor ocr-result-editor"
           value={resultText}
@@ -316,6 +332,23 @@ function ImageImportPanel({ onApply }) {
           placeholder={'识别完成后会生成结构化节点文本，例如：\n阶段一：进场准备阶段\n* 收到中标通知书\n* 入驻现场'}
         />
       </label>
+
+      {rawOcrText.trim() && (
+        <details className="ocr-raw-text-panel">
+          <summary>查看 OCR 原始文本</summary>
+          <textarea
+            className="structured-editor ocr-raw-text"
+            value={rawOcrText}
+            readOnly
+            aria-label="OCR 原始文本"
+          />
+          <span>原始文本仅用于核对，不会自动应用到当前流程。</span>
+        </details>
+      )}
+
+      {recognizedLineCount > 0 && recognizedLineCount < 3 && (
+        <p className="ocr-quality-warning">识别结果较少，建议上传更清晰截图，或手动补充节点。</p>
+      )}
     </section>
   )
 }
