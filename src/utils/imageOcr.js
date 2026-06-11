@@ -9,6 +9,8 @@ const CHINESE_LANGUAGE_FALLBACK_MESSAGE = '中文 OCR 语言包加载失败，�
 const OCR_MODULE_LOAD_ERROR_MESSAGE = 'OCR 模块加载失败：请检查网络或稍后重试。你仍可手动输入结构化节点。'
 
 let tesseractModulePromise
+const TESSERACT_PACKAGE_IMPORT = 'tesseract.js'
+const TESSERACT_CDN_IMPORT = 'https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/tesseract.esm.min.js'
 
 function mapProgressStatus(status = '') {
   if (status.includes('load') || status.includes('init')) return 'OCR 初始化中'
@@ -22,8 +24,12 @@ async function loadTesseract() {
   }
 
   if (!tesseractModulePromise) {
-    console.info('[FlowCraft OCR] importing tesseract.js from npm package')
-    tesseractModulePromise = import('tesseract.js')
+    console.info('[FlowCraft OCR] importing tesseract.js')
+    tesseractModulePromise = import(/* @vite-ignore */ TESSERACT_PACKAGE_IMPORT)
+      .catch((error) => {
+        console.warn('[FlowCraft OCR] npm package import failed, trying CDN fallback', error)
+        return import(/* @vite-ignore */ TESSERACT_CDN_IMPORT)
+      })
       .then((module) => {
         console.info('[FlowCraft OCR] tesseract module loaded')
         return module
