@@ -39,6 +39,7 @@ export function normalizeImportedProjectConfig(rawConfig = {}) {
     input: typeof rawConfig.input === 'string' ? rawConfig.input : '',
     outputPurpose: OUTPUT_PURPOSES.includes(rawConfig.outputPurpose) ? rawConfig.outputPurpose : (projectConfig.reportUse || '环保工程技术报告'),
     style: STYLE_OPTIONS.includes(rawConfig.style) ? rawConfig.style : '技术报告',
+    aiVisionResult: rawConfig.aiVisionResult && typeof rawConfig.aiVisionResult === 'object' ? rawConfig.aiVisionResult : null,
     createdAt: rawConfig.createdAt || new Date().toISOString(),
     updatedAt: rawConfig.updatedAt || new Date().toISOString()
   }

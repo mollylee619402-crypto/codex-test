@@ -39,7 +39,9 @@ function InputPanel({
   onCopyProjectConfigJson,
   onImportProjectConfig,
   onApplyImageImport,
-  onDetectedOcrCaption
+  onDetectedOcrCaption,
+  onDetectedVisionTemplate,
+  onVisionResult
 }) {
   const handleExampleChange = (event) => {
     const example = ENVIRONMENT_EXAMPLES.find((item) => item.id === event.target.value)
@@ -77,7 +79,7 @@ function InputPanel({
 
       <ProjectConfigPanel projectConfig={projectConfig} onChange={setProjectConfig} />
 
-      <ImageImportPanel onApply={onApplyImageImport} onDetectedCaption={onDetectedOcrCaption} />
+      <ImageImportPanel onApply={onApplyImageImport} onDetectedCaption={onDetectedOcrCaption} diagramType={diagramType} projectConfig={projectConfig} onTemplateTypeDetected={onDetectedVisionTemplate} onVisionResult={onVisionResult} />
 
       <StructuredEditor value={structuredInput} onChange={setStructuredInput} parserErrors={parserErrors} />
 

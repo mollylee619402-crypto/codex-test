@@ -11,6 +11,7 @@ export function buildProjectConfigPayload({
   input,
   outputPurpose,
   style,
+  aiVisionResult,
   id,
   createdAt
 }) {
@@ -34,6 +35,7 @@ export function buildProjectConfigPayload({
     input: input || '',
     outputPurpose: outputPurpose || normalizedProjectConfig.reportUse || '',
     style: style || '技术报告',
+    aiVisionResult: aiVisionResult && typeof aiVisionResult === 'object' ? aiVisionResult : null,
     createdAt: createdAt || now,
     updatedAt: now
   }

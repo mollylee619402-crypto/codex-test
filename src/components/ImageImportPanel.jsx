@@ -3,7 +3,14 @@ import { getSupportedImageHint, isSupportedImageFile } from '../utils/imageOcrSu
 import { clipboardSupportsFiles, getImageFileFromClipboard, isEditablePasteTarget } from '../utils/clipboardImage.js'
 import { getFirstSupportedDraggedImage } from '../utils/dragDropImage.js'
 import { ocrToStructuredInput } from '../utils/ocrToStructuredInput.js'
+import { extractDiagramWithVision } from '../utils/visionExtract.js'
 import ImageSelectionOverlay from './ImageSelectionOverlay.jsx'
+
+const IMPORT_METHODS = {
+  AI: 'ai',
+  OCR: 'ocr',
+  MANUAL: 'manual-edit'
+}
 
 const RECOGNITION_MODES = {
   FULL: 'full',
@@ -23,7 +30,7 @@ function isPdfFile(file) {
   return file?.type === 'application/pdf' || /\.pdf$/i.test(file?.name || '')
 }
 
-function ImageImportPanel({ onApply, onDetectedCaption }) {
+function ImageImportPanel({ onApply, onDetectedCaption, diagramType, projectConfig, onTemplateTypeDetected, onVisionResult }) {
   const [file, setFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState('')
   const [status, setStatus] = useState('')
@@ -36,6 +43,7 @@ function ImageImportPanel({ onApply, onDetectedCaption }) {
   const [isPointerInDropZone, setIsPointerInDropZone] = useState(false)
   const [preprocessOptions, setPreprocessOptions] = useState(DEFAULT_PREPROCESS_OPTIONS)
   const [preprocessNotes, setPreprocessNotes] = useState([])
+  const [recognitionMethod, setRecognitionMethod] = useState(IMPORT_METHODS.AI)
   const [recognitionMode, setRecognitionMode] = useState(RECOGNITION_MODES.FULL)
   const [detectedBoxes, setDetectedBoxes] = useState([])
   const [imageNaturalSize, setImageNaturalSize] = useState({ width: 0, height: 0 })
@@ -43,6 +51,9 @@ function ImageImportPanel({ onApply, onDetectedCaption }) {
   const [segmentDetails, setSegmentDetails] = useState([])
   const [isDetecting, setIsDetecting] = useState(false)
   const [qualityHint, setQualityHint] = useState('')
+  const [aiResult, setAiResult] = useState(null)
+  const [aiWarnings, setAiWarnings] = useState([])
+  const [isAiRecognizing, setIsAiRecognizing] = useState(false)
   const imagePreviewRef = useRef(null)
   const fileInputRef = useRef(null)
   const dropZoneRef = useRef(null)
@@ -85,6 +96,8 @@ function ImageImportPanel({ onApply, onDetectedCaption }) {
     setManualSelection(null)
     setSegmentDetails([])
     setQualityHint('')
+    setAiResult(null)
+    setAiWarnings([])
     setImageNaturalSize({ width: 0, height: 0 })
     setStatus(file ? '已替换当前图片' : sourceMessage)
     resetFileInput()
@@ -331,9 +344,51 @@ function ImageImportPanel({ onApply, onDetectedCaption }) {
       setRawOcrText('')
       setRecognizedLineCount(0)
       setProgress(0)
-      setStatus(message.includes('OCR 模块加载失败') || message.includes('初始化') ? message : 'OCR 失败，请检查图片清晰度')
+      setStatus(message.includes('OCR 模块加载失败') || message.includes('初始化') ? message : `${message.includes('OCR') ? message : 'OCR 失败，请检查图片清晰度'}。复杂流程图建议使用 AI 识图模式。`)
     } finally {
       setIsRecognizing(false)
+    }
+  }
+
+
+  const handleAiRecognize = async () => {
+    if (!file) {
+      setStatus(`请先上传图片。${getSupportedImageHint()}`)
+      return
+    }
+
+    setIsAiRecognizing(true)
+    setProgress(0)
+    setPreprocessNotes([])
+    setSegmentDetails([])
+    setQualityHint('')
+    setAiWarnings([])
+    setStatus('正在进行 AI 识图，请稍候…')
+
+    try {
+      const result = await extractDiagramWithVision(file, {
+        templateType: diagramType,
+        figureNumber: projectConfig?.figureNumber || '',
+        figureTitle: projectConfig?.figureTitle || ''
+      })
+      setAiResult(result)
+      setResultText(result.structuredInput)
+      setRawOcrText('')
+      setRecognizedLineCount(result.structuredInput.split(/\n+/).filter((line) => line.trim().replace(/^\s*[*-]\s*/, '')).length)
+      setAiWarnings(result.warnings || [])
+      setQualityHint('AI 识图结果可能不完整，请人工校对。')
+      setProgress(100)
+      if (result.figureNumber || result.figureTitle) onDetectedCaption?.({ figureNumber: result.figureNumber, figureTitle: result.figureTitle })
+      if (result.templateType) onTemplateTypeDetected?.(result.templateType)
+      onVisionResult?.(result)
+      setStatus('AI 识图完成，已填入结构化结果编辑区，请人工校对后应用。')
+    } catch (error) {
+      const message = error?.message || 'AI 识图请求失败。网络异常，请稍后重试。'
+      setAiResult(null)
+      setAiWarnings([])
+      setStatus(message)
+    } finally {
+      setIsAiRecognizing(false)
     }
   }
 
@@ -342,7 +397,7 @@ function ImageImportPanel({ onApply, onDetectedCaption }) {
       setStatus('未识别到有效文字，暂无可应用内容。')
       return
     }
-    onApply(resultText.trim())
+    onApply(resultText.trim(), aiResult)
     setStatus('已将识别结果应用到当前流程。')
   }
 
@@ -358,6 +413,8 @@ function ImageImportPanel({ onApply, onDetectedCaption }) {
     setManualSelection(null)
     setSegmentDetails([])
     setQualityHint('')
+    setAiResult(null)
+    setAiWarnings([])
     setImageNaturalSize({ width: 0, height: 0 })
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     setPreviewUrl('')
@@ -378,11 +435,11 @@ function ImageImportPanel({ onApply, onDetectedCaption }) {
     <section className="config-card image-import-panel">
       <div className="config-card-heading">
         <h3>图片识别生成</h3>
-        <span>上传已有流程图，OCR 识别后生成可编辑节点</span>
+        <span>上传已有流程图，AI 识图或本地 OCR 后生成可编辑节点</span>
       </div>
 
       <p className="image-import-tip">
-        识别效果受图片清晰度、文字大小、遮挡、复杂连线和排版影响。建议上传清晰截图，识别后请人工校对。
+        复杂中文流程图建议使用 AI 识图；本地 OCR 适合简单截图。AI 识图会将图片发送到服务端模型处理，请确认图片不包含敏感信息。
       </p>
 
       <div
@@ -418,18 +475,29 @@ function ImageImportPanel({ onApply, onDetectedCaption }) {
         {file && <em>当前图片：{file.name || '未命名截图'}</em>}
       </div>
 
+
+      <div className="ocr-method-panel" aria-label="识别方式">
+        <strong>识别方式</strong>
+        <div className="ocr-mode-options">
+          <label><input type="radio" name="recognition-method" checked={recognitionMethod === IMPORT_METHODS.AI} onChange={() => setRecognitionMethod(IMPORT_METHODS.AI)} /> AI 识图推荐</label>
+          <label><input type="radio" name="recognition-method" checked={recognitionMethod === IMPORT_METHODS.OCR} onChange={() => setRecognitionMethod(IMPORT_METHODS.OCR)} /> 本地 OCR 备用</label>
+          <label><input type="radio" name="recognition-method" checked={recognitionMethod === IMPORT_METHODS.MANUAL} onChange={() => setRecognitionMethod(IMPORT_METHODS.MANUAL)} /> 手动编辑</label>
+        </div>
+        <p>AI 识图会将图片发送至服务端模型处理，请勿上传包含敏感信息或涉密内容的图片。</p>
+      </div>
+
       <p className="pdf-import-tip">PDF 识别功能即将支持。当前建议先将 PDF 中的流程图截图后粘贴或上传。</p>
 
-      <div className="ocr-mode-panel" aria-label="识别模式">
+      {recognitionMethod === IMPORT_METHODS.OCR && <div className="ocr-mode-panel" aria-label="本地 OCR 识别模式">
         <strong>识别模式</strong>
         <div className="ocr-mode-options">
           <label><input type="radio" name="ocr-mode" checked={recognitionMode === RECOGNITION_MODES.FULL} onChange={() => setRecognitionMode(RECOGNITION_MODES.FULL)} /> 整图识别</label>
           <label><input type="radio" name="ocr-mode" checked={recognitionMode === RECOGNITION_MODES.SEGMENTED} onChange={() => setRecognitionMode(RECOGNITION_MODES.SEGMENTED)} /> 自动分块识别</label>
           <label><input type="radio" name="ocr-mode" checked={recognitionMode === RECOGNITION_MODES.MANUAL} onChange={() => setRecognitionMode(RECOGNITION_MODES.MANUAL)} /> 手动框选识别</label>
         </div>
-      </div>
+      </div>}
 
-      <div className="ocr-preprocess-panel" aria-label="OCR 前处理选项">
+      {recognitionMethod === IMPORT_METHODS.OCR && <div className="ocr-preprocess-panel" aria-label="OCR 前处理选项">
         <strong>OCR 前处理</strong>
         <div className="ocr-preprocess-options">
           <label><input type="checkbox" checked={preprocessOptions.enhanceContrast && !preprocessOptions.useOriginal} onChange={updatePreprocessOption('enhanceContrast')} disabled={preprocessOptions.useOriginal} /> 自动增强对比度</label>
@@ -438,7 +506,7 @@ function ImageImportPanel({ onApply, onDetectedCaption }) {
           <label><input type="checkbox" checked={preprocessOptions.upscale && !preprocessOptions.useOriginal} onChange={updatePreprocessOption('upscale')} disabled={preprocessOptions.useOriginal} /> 放大后识别</label>
           <label><input type="checkbox" checked={preprocessOptions.useOriginal} onChange={updatePreprocessOption('useOriginal')} /> 使用原图识别</label>
         </div>
-      </div>
+      </div>}
 
       {previewUrl && (
         <div className="image-preview-box">
@@ -451,15 +519,15 @@ function ImageImportPanel({ onApply, onDetectedCaption }) {
             />
             <ImageSelectionOverlay
               imgRef={imagePreviewRef}
-              enabled={recognitionMode === RECOGNITION_MODES.MANUAL && !isRecognizing}
+              enabled={recognitionMethod === IMPORT_METHODS.OCR && recognitionMode === RECOGNITION_MODES.MANUAL && !isRecognizing && !isAiRecognizing}
               selection={manualSelection}
               onSelectionChange={setManualSelection}
-              boxes={recognitionMode === RECOGNITION_MODES.SEGMENTED ? detectedBoxes : []}
+              boxes={recognitionMethod === IMPORT_METHODS.OCR && recognitionMode === RECOGNITION_MODES.SEGMENTED ? detectedBoxes : []}
               naturalSize={imageNaturalSize}
             />
           </div>
           <div className="ocr-debug-summary">
-            <span>当前识别模式：{recognitionMode === RECOGNITION_MODES.FULL ? '整图识别' : recognitionMode === RECOGNITION_MODES.SEGMENTED ? '自动分块识别' : '手动框选识别'}</span>
+            <span>当前识别方式：{recognitionMethod === IMPORT_METHODS.AI ? 'AI 识图推荐' : recognitionMethod === IMPORT_METHODS.MANUAL ? '手动编辑' : (recognitionMode === RECOGNITION_MODES.FULL ? '本地 OCR / 整图识别' : recognitionMode === RECOGNITION_MODES.SEGMENTED ? '本地 OCR / 自动分块识别' : '本地 OCR / 手动框选识别')}</span>
             <span>检测到的流程框数量：{detectedBoxes.length}</span>
             <span>已识别节点数量：{recognizedLineCount}</span>
             {qualityHint && <span className="quality-hint">识别质量提示：{qualityHint}</span>}
@@ -474,25 +542,26 @@ function ImageImportPanel({ onApply, onDetectedCaption }) {
       )}
 
       <div className="button-row compact image-import-actions">
-        <button type="button" onClick={() => detectBoxes()} disabled={!file || isRecognizing || isDetecting}>检测流程框</button>
-        <button type="button" className="primary" onClick={() => handleRecognize(false)} disabled={!file || isRecognizing || isDetecting}>
-          {isRecognizing ? '正在识别…' : '开始识别'}
+        <button type="button" className="primary" onClick={handleAiRecognize} disabled={!file || isAiRecognizing || isRecognizing}>
+          {isAiRecognizing ? 'AI 识图中…' : 'AI 识图生成'}
         </button>
-        <button type="button" onClick={() => handleRecognize(true)} disabled={!file || isRecognizing || isDetecting}>重新识别</button>
-        <button type="button" onClick={() => setManualSelection(null)} disabled={!manualSelection || isRecognizing}>清除选区</button>
-        <button type="button" onClick={handleApply} disabled={!resultText.trim() || isRecognizing}>应用到当前流程</button>
-        <button type="button" onClick={handleRemoveImage} disabled={!file || isRecognizing}>移除当前图片</button>
+        <button type="button" onClick={() => handleRecognize(false)} disabled={!file || isRecognizing || isDetecting || isAiRecognizing}>本地 OCR 识别</button>
+        {recognitionMethod === IMPORT_METHODS.OCR && <button type="button" onClick={() => detectBoxes()} disabled={!file || isRecognizing || isDetecting || isAiRecognizing}>检测流程框</button>}
+        {recognitionMethod === IMPORT_METHODS.OCR && <button type="button" onClick={() => handleRecognize(true)} disabled={!file || isRecognizing || isDetecting || isAiRecognizing}>重新 OCR</button>}
+        {recognitionMethod === IMPORT_METHODS.OCR && <button type="button" onClick={() => setManualSelection(null)} disabled={!manualSelection || isRecognizing}>清除选区</button>}
+        <button type="button" onClick={handleApply} disabled={!resultText.trim() || isRecognizing || isAiRecognizing}>应用到当前流程</button>
+        <button type="button" onClick={handleRemoveImage} disabled={!file || isRecognizing || isAiRecognizing}>移除当前图片</button>
       </div>
 
       {status && (
         <div className="ocr-status" role="status">
           <span>{status}</span>
-          {isRecognizing && <strong>{progress}%</strong>}
+          {(isRecognizing || isAiRecognizing) && <strong>{progress}%</strong>}
         </div>
       )}
 
       <label className="field-label">
-        清洗后的结构化结果编辑
+        AI / OCR 结构化结果编辑
         <textarea
           className="structured-editor ocr-result-editor"
           value={resultText}
@@ -500,6 +569,24 @@ function ImageImportPanel({ onApply, onDetectedCaption }) {
           placeholder={'识别完成后会生成结构化节点文本，例如：\n阶段一：进场准备阶段\n* 收到中标通知书\n* 入驻现场'}
         />
       </label>
+
+
+      {aiResult && (
+        <details className="ocr-raw-text-panel ai-result-panel" open>
+          <summary>AI 识图结果</summary>
+          <div className="ai-result-grid">
+            <span>图号：{aiResult.figureNumber || '未识别'}</span>
+            <span>图题：{aiResult.figureTitle || '未识别'}</span>
+            <span>图类型：{aiResult.diagramKind || '普通流程图'}</span>
+            <span>模板：{aiResult.templateType || 'basic'}</span>
+          </div>
+          {aiWarnings.length > 0 && (
+            <ul className="ai-warning-list">
+              {aiWarnings.map((warning) => <li key={warning}>{warning}</li>)}
+            </ul>
+          )}
+        </details>
+      )}
 
       {rawOcrText.trim() && (
         <details className="ocr-raw-text-panel">

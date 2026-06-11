@@ -70,6 +70,7 @@ function App() {
   const [pngScale, setPngScale] = useState(3)
   const [projectConfig, setProjectConfig] = useState(DEFAULT_PROJECT_CONFIG)
   const [structuredInput, setStructuredInput] = useState(() => createDefaultStructuredText(DEFAULT_EXAMPLE.diagramType))
+  const [aiVisionResult, setAiVisionResult] = useState(null)
   const feedbackTimerRef = useRef(null)
 
   const diagramTypeLabel = useMemo(
@@ -106,8 +107,9 @@ function App() {
     pngScale,
     input,
     outputPurpose,
-    style
-  }), [diagramType, projectConfig, structuredInput, diagramContent, exportSize, pngScale, input, outputPurpose, style])
+    style,
+    aiVisionResult
+  }), [diagramType, projectConfig, structuredInput, diagramContent, exportSize, pngScale, input, outputPurpose, style, aiVisionResult])
 
   const currentProjectConfigJson = useMemo(() => serializeProjectConfig(currentProjectConfigPayload), [currentProjectConfigPayload])
 
@@ -170,6 +172,7 @@ function App() {
     const nextStructuredInput = example.structuredInput || createDefaultStructuredText(example.diagramType)
     setProjectConfig(nextProjectConfig)
     setStructuredInput(nextStructuredInput)
+    setAiVisionResult(null)
     const nextParsed = parseStructuredInput(nextStructuredInput, { templateType: example.diagramType })
     const label = DIAGRAM_TYPES.find((type) => type.value === example.diagramType)?.label || '环保工程流程图'
     generate(example.content, { diagramType: example.diagramType, diagramTypeLabel: label, outputPurpose: example.outputPurpose, style: example.style }, { templateType: example.diagramType, stages: nextParsed.stages })
@@ -195,6 +198,7 @@ function App() {
         style,
         projectConfig,
         structuredInput,
+        aiVisionResult,
         createdAt: new Date().toISOString()
       },
       ...templates
@@ -212,6 +216,7 @@ function App() {
     setProjectConfig(mergeProjectConfig(projectConfig, template.projectConfig || {}))
     const nextStructuredInput = template.structuredInput || createDefaultStructuredText(template.diagramType)
     setStructuredInput(nextStructuredInput)
+    setAiVisionResult(template.aiVisionResult || null)
     const nextParsed = parseStructuredInput(nextStructuredInput, { templateType: template.diagramType })
     const label = DIAGRAM_TYPES.find((type) => type.value === template.diagramType)?.label || '基础版流程图'
     generate(template.input, { diagramType: template.diagramType, diagramTypeLabel: label, outputPurpose: template.outputPurpose, style: template.style }, { templateType: template.diagramType, stages: nextParsed.stages })
@@ -241,6 +246,7 @@ function App() {
     setStyle(nextStyle)
     setProjectConfig(nextProjectConfig)
     setStructuredInput(nextStructuredInput)
+    setAiVisionResult(normalized.aiVisionResult || null)
     setExportSize(normalized.exportSettings.exportSizePreset)
     setPngScale(normalized.exportSettings.pngScale)
     generate(nextInput, { diagramType: nextTemplateType, diagramTypeLabel: nextLabel, outputPurpose: nextOutputPurpose, style: nextStyle }, { templateType: nextTemplateType, stages: nextParsed.stages })
@@ -317,15 +323,34 @@ function App() {
     showFeedback('已从 OCR 识别结果同步图号和图题到项目参数设置', 2800)
   }
 
-  const handleApplyImageImport = (recognizedText) => {
+  const handleApplyImageImport = (recognizedText, visionResult = null) => {
     const nextStructuredInput = String(recognizedText || '').trim()
     if (!nextStructuredInput) {
       showFeedback('未识别到有效文字，暂无可应用内容。', 2600)
       return
     }
+    if (visionResult?.figureNumber || visionResult?.figureTitle) {
+      setProjectConfig((current) => ({
+        ...current,
+        figureNumber: visionResult.figureNumber || current.figureNumber,
+        figureTitle: visionResult.figureTitle || current.figureTitle,
+        exportBaseName: current.exportBaseName
+      }))
+    }
+    if (visionResult?.templateType && DIAGRAM_TYPES.some((type) => type.value === visionResult.templateType)) {
+      setDiagramType(visionResult.templateType)
+    }
+    setAiVisionResult(visionResult || null)
     setStructuredInput(nextStructuredInput)
     setInput(nextStructuredInput.replace(/^\s*[*-]\s*/gm, '').replace(/\n{2,}/g, '\n'))
-    showFeedback('图片识别结果已应用到结构化节点编辑区', 2600)
+    showFeedback(visionResult ? 'AI 识图结果已应用到结构化节点编辑区' : '图片识别结果已应用到结构化节点编辑区', 2600)
+  }
+
+
+  const handleDetectedVisionTemplate = (templateType) => {
+    if (!templateType || !DIAGRAM_TYPES.some((type) => type.value === templateType)) return
+    setDiagramType(templateType)
+    showFeedback('已根据 AI 识图结果同步流程图类型', 2200)
   }
 
   const handleDiagramTypeChange = (nextDiagramType) => {
@@ -487,6 +512,8 @@ function App() {
           onImportProjectConfig={handleImportProjectConfig}
           onApplyImageImport={handleApplyImageImport}
           onDetectedOcrCaption={handleDetectedOcrCaption}
+          onDetectedVisionTemplate={handleDetectedVisionTemplate}
+          onVisionResult={setAiVisionResult}
         />
         <OutputPanel
           mermaidCode={mermaidCode}

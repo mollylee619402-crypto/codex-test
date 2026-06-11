@@ -4,7 +4,7 @@
 
 FlowCraft 是一个纯前端网页小工具，当前升级为「环保工程流程图与组织架构图生成器」。它保留原有 PRD、SOP、产品流程图、系统流程图和基础 Mermaid 生成能力，同时新增面向环保工程技术报告、场地调查报告、风险评估报告、工程可行性研究报告、竣工环保验收报告、运维方案、应急预案和项目管理组织架构图的专业模板。
 
-本项目不需要后端、不需要登录、不调用 OpenAI API，所有数据处理、示例切换和模板保存都在浏览器本地完成。
+本项目默认仍可作为前端工具使用；手动编辑、本地 OCR、示例切换、模板保存和导出能力均在浏览器本地完成。若启用“AI 识图生成流程图”，需要通过 Vercel Serverless Function 在服务端调用 OpenAI 图像输入模型，API Key 只从服务端环境变量读取，不会暴露到前端。
 
 ## 功能说明
 
@@ -27,6 +27,11 @@ FlowCraft 是一个纯前端网页小工具，当前升级为「环保工程流�
 - 支持自动生成图题、流程说明、关键控制节点和风险/异常节点说明。
 - 支持 Mermaid 代码实时预览，渲染失败时显示友好提示并保留源码。
 - 支持将常用流程保存为模板，模板通过 `localStorage` 持久化。
+- 图片识别生成模块新增 3 种识别方式：
+  - AI 识图推荐：适合复杂中文流程图，可理解图号、图题、分组、阶段和节点层级。
+  - 本地 OCR 备用：保留 Tesseract.js 整图识别、自动分块识别和手动框选识别，适合简单截图。
+  - 手动编辑：无需上传到服务端，直接人工整理结构化节点。
+- AI 识图结果会填入结构化节点编辑区，并同步图号、图题和识别警告；用户校对后可继续生成 SVG / 高清 PNG / PPTX。
 
 ## 环保工程专用 Mermaid 样式
 
@@ -100,8 +105,11 @@ Mermaid 源码下载会导出 `.mmd` 文件，内容为当前 Mermaid 代码，�
 
 - Vite
 - React
+- Vercel Serverless Function（用于可选 AI 识图）
+- OpenAI Responses API 图像输入（服务端调用）
 - Mermaid.js
 - PptxGenJS
+- Tesseract.js（本地 OCR 备用）
 - 原生 CSS
 - localStorage
 
@@ -121,6 +129,44 @@ npm install
 - Netlify 构建环境
 
 在上述环境中重新执行 `npm install`、`npm run dev` 和 `npm run build` 即可完成安装、预览与构建验证。
+
+
+## AI 识图配置（可选）
+
+FlowCraft 新增“AI 识图推荐”模式，用于识别复杂中文流程图、图号、图题、阶段分组和节点层级。该模式会将图片发送到服务端 API，再由服务端调用支持图像输入的 OpenAI 模型处理。
+
+### Vercel 环境变量
+
+如需使用 AI 识图功能，请在 Vercel 项目中配置环境变量：
+
+```text
+OPENAI_API_KEY=你的 API Key
+```
+
+配置后重新部署项目。API Key 仅由 `api/vision-extract.js` 在服务端读取，前端代码不会包含明文 API Key。
+
+可选环境变量：
+
+```text
+OPENAI_VISION_MODEL=gpt-5
+```
+
+如果未配置 `OPENAI_API_KEY`，点击“AI 识图生成”时会提示：
+
+```text
+AI 识图未配置，请在 Vercel 环境变量中配置 OPENAI_API_KEY，或继续使用本地 OCR / 手动编辑。
+```
+
+此时 FlowCraft 仍可继续使用：
+
+1. 手动结构化编辑
+2. 本地 OCR
+3. 报告版 SVG / PNG / PPTX 导出
+4. 项目配置管理
+
+### 隐私提示
+
+AI 识图会将图片发送至服务端模型处理，请勿上传包含敏感信息或涉密内容的图片。若图片过大，请先裁剪关键区域或提高截图清晰度后重试。
 
 ## 本地运行
 
@@ -144,7 +190,7 @@ npm run build
 
 ## 部署到静态网站
 
-FlowCraft 是纯前端应用，可以部署到任意静态托管平台：
+FlowCraft 的核心功能可以部署到任意静态托管平台；若要使用 AI 识图，请部署到支持 `api/vision-extract.js` 的 Vercel 或兼容 Serverless Function 的平台：
 
 1. 执行构建：
 
