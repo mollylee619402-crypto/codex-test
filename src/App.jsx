@@ -71,6 +71,9 @@ function App() {
   const [projectConfig, setProjectConfig] = useState(DEFAULT_PROJECT_CONFIG)
   const [structuredInput, setStructuredInput] = useState(() => createDefaultStructuredText(DEFAULT_EXAMPLE.diagramType))
   const [aiVisionResult, setAiVisionResult] = useState(null)
+  const [isImageAssistMode, setIsImageAssistMode] = useState(true)
+  const [focusRedrawMode, setFocusRedrawMode] = useState(true)
+  const [isPreviewCollapsed, setIsPreviewCollapsed] = useState(true)
   const feedbackTimerRef = useRef(null)
 
   const diagramTypeLabel = useMemo(
@@ -122,6 +125,7 @@ function App() {
   }, [])
 
   const generate = useCallback((source = input, nextConfig = config, nextDiagramContent = diagramContent) => {
+    setIsPreviewCollapsed(false)
     const nodes = isReportTemplate(nextConfig.diagramType)
       ? structuredContentToMermaidNodes(nextDiagramContent)
       : parseFlowDescription(source)
@@ -478,7 +482,7 @@ function App() {
   return (
     <div className="app">
       <Header />
-      <main className="workspace">
+      <main className={`workspace ${isImageAssistMode ? 'is-image-assist-mode' : ''} ${focusRedrawMode ? 'is-focus-redraw' : ''} ${isPreviewCollapsed ? 'is-preview-collapsed' : ''}`}>
         <InputPanel
           input={input}
           setInput={setInput}
@@ -514,6 +518,10 @@ function App() {
           onDetectedOcrCaption={handleDetectedOcrCaption}
           onDetectedVisionTemplate={handleDetectedVisionTemplate}
           onVisionResult={setAiVisionResult}
+          isImageAssistMode={isImageAssistMode}
+          onImageAssistModeChange={setIsImageAssistMode}
+          focusRedrawMode={focusRedrawMode}
+          onFocusRedrawModeChange={setFocusRedrawMode}
         />
         <OutputPanel
           mermaidCode={mermaidCode}
@@ -540,6 +548,8 @@ function App() {
           isReportSvg={isReportSvg}
           exportSize={exportSize}
           setExportSize={setExportSize}
+          collapsed={isPreviewCollapsed}
+          onToggleCollapsed={() => setIsPreviewCollapsed((current) => !current)}
         />
       </main>
     </div>

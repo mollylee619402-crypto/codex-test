@@ -41,7 +41,11 @@ function InputPanel({
   onApplyImageImport,
   onDetectedOcrCaption,
   onDetectedVisionTemplate,
-  onVisionResult
+  onVisionResult,
+  isImageAssistMode = true,
+  onImageAssistModeChange,
+  focusRedrawMode = false,
+  onFocusRedrawModeChange
 }) {
   const handleExampleChange = (event) => {
     const example = ENVIRONMENT_EXAMPLES.find((item) => item.id === event.target.value)
@@ -79,7 +83,18 @@ function InputPanel({
 
       <ProjectConfigPanel projectConfig={projectConfig} onChange={setProjectConfig} />
 
-      <ImageImportPanel onApply={onApplyImageImport} onDetectedCaption={onDetectedOcrCaption} diagramType={diagramType} projectConfig={projectConfig} onTemplateTypeDetected={onDetectedVisionTemplate} onVisionResult={onVisionResult} />
+      <div className="redraw-focus-switch" aria-label="图片辅助重绘工作台开关">
+        <div>
+          <strong>专注重绘模式</strong>
+          <span>{isImageAssistMode ? '已优先放大参考图、节点草稿和结构化编辑区' : '切换到图片辅助重绘后将自动优化工作台宽度'}</span>
+        </div>
+        <label className="switch-control">
+          <input type="checkbox" checked={focusRedrawMode} onChange={(event) => onFocusRedrawModeChange?.(event.target.checked)} />
+          <span>{focusRedrawMode ? '已开启' : '已关闭'}</span>
+        </label>
+      </div>
+
+      <ImageImportPanel onApply={onApplyImageImport} onDetectedCaption={onDetectedOcrCaption} diagramType={diagramType} projectConfig={projectConfig} onTemplateTypeDetected={onDetectedVisionTemplate} onVisionResult={onVisionResult} onAssistModeChange={onImageAssistModeChange} />
 
       <StructuredEditor value={structuredInput} onChange={setStructuredInput} parserErrors={parserErrors} />
 

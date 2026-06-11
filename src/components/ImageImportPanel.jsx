@@ -105,7 +105,7 @@ function formatDraftNodes(draftNodes = []) {
   return output.join('\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
-function ImageImportPanel({ onApply, onDetectedCaption, diagramType, projectConfig, onTemplateTypeDetected, onVisionResult }) {
+function ImageImportPanel({ onApply, onDetectedCaption, diagramType, projectConfig, onTemplateTypeDetected, onVisionResult, onAssistModeChange }) {
   const [file, setFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState('')
   const [status, setStatus] = useState('')
@@ -144,6 +144,10 @@ function ImageImportPanel({ onApply, onDetectedCaption, diagramType, projectConf
   useEffect(() => () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl)
   }, [previewUrl])
+
+  useEffect(() => {
+    onAssistModeChange?.(recognitionMethod === IMPORT_METHODS.ASSIST)
+  }, [recognitionMethod, onAssistModeChange])
 
   const resetFileInput = () => {
     if (fileInputRef.current) fileInputRef.current.value = ''
