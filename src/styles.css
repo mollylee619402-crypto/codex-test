@@ -1044,3 +1044,65 @@ input:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(37, 99, 2
   .assist-redraw-layout { grid-template-columns: 1fr; }
   .assist-draft-item { grid-template-columns: 1fr; }
 }
+
+.assist-side-panel {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.assist-view-toolbar {
+  justify-content: flex-start;
+  padding-top: 8px;
+  border-top: 1px dashed #dbe7ef;
+}
+
+.assist-view-toolbar span,
+.advanced-help {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.7;
+}
+
+.assist-selection-summary strong {
+  margin-right: auto;
+  color: #1e3a8a;
+  font-size: 14px;
+}
+
+.assist-selection-actions {
+  justify-content: flex-start;
+}
+
+.assist-selection-actions button {
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.advanced-recognition-panel .ocr-mode-panel,
+.advanced-recognition-panel .ocr-preprocess-panel {
+  margin-top: 10px;
+}
+
+.debug-ocr-panel .ocr-debug-summary {
+  margin-top: 10px;
+  border: 1px dashed #dbe7ef;
+  border-radius: 12px;
+}
+
+.debug-ocr-panel .ai-result-panel,
+.debug-ocr-panel .raw-ocr-block,
+.debug-ocr-panel .segmented-detail-panel {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.debug-ocr-panel .ai-result-panel > strong,
+.debug-ocr-panel .raw-ocr-block > strong,
+.debug-ocr-panel .segmented-detail-panel > strong {
+  color: #334155;
+  font-size: 13px;
+}
