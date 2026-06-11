@@ -833,3 +833,56 @@ input:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(37, 99, 2
   min-height: 72px;
   margin-top: 6px;
 }
+
+.ocr-method-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 14px;
+  background: #eff6ff;
+}
+
+.ocr-method-panel > strong {
+  color: #1e3a8a;
+  font-size: 14px;
+}
+
+.ocr-method-panel p {
+  margin: 0;
+  color: #1e40af;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.7;
+}
+
+.ai-result-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ai-result-grid span {
+  margin: 0;
+  padding: 7px 9px;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ai-warning-list {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.7;
+}
+
+@media (max-width: 720px) {
+  .ai-result-grid { grid-template-columns: 1fr; }
+}
