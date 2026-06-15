@@ -11,6 +11,7 @@ export const DIAGRAM_TYPES = [
   { label: '资料收集与踏勘流程图', value: 'site-survey' },
   { label: '技术服务总体流程图', value: 'technical-service' },
   { label: '项目组织架构图', value: 'project-org' },
+  { label: '项目整治技术路线图', value: 'remediation-route' },
   { label: '环保工艺流程图', value: 'environment-process' },
   { label: '环保监测流程图', value: 'monitoring' },
   { label: '环评/验收流程图', value: 'eia' },

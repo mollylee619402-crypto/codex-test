@@ -2,14 +2,14 @@ function StructuredEditor({ value, onChange, parserErrors = [] }) {
   return (
     <section className="config-card">
       <div className="config-card-heading">
-        <h3>结构化节点编辑</h3>
-        <span>支持“阶段一：xxx”、* 节点、二级缩进子节点</span>
+        <h3>结构化内容编辑</h3>
+        <span>请在这里校对和调整最终内容。生成流程图时将以此处内容为准。</span>
       </div>
       <textarea
         className="structured-editor"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        placeholder={'阶段一：进场准备阶段\n* 收到中标通知书\n* 入驻现场\n  * 子节点'}
+        placeholder={'图题：图5.6-1 项目整治技术路线图\n\n阶段一：项目整治技术路线\n\n* 消除上游污染源\n  * 洗金场堆存尾砂清挖运输'}
       />
       {parserErrors.length > 0 && (
         <div className="parse-warning">

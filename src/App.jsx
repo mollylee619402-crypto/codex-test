@@ -17,6 +17,7 @@ import { parseStructuredInput, structuredContentToMermaidNodes } from './utils/s
 import { buildProjectConfigPayload, downloadProjectConfigJson, serializeProjectConfig } from './utils/projectConfigExport.js'
 import { normalizeImportedProjectConfig, readProjectConfigFile } from './utils/projectConfigImport.js'
 import { deleteProjectConfigFromLibrary, readProjectConfigs, saveProjectConfigToLibrary } from './utils/projectConfigStorage.js'
+import { organizeStructuredText } from './utils/structuredTextOrganizer.js'
 
 const STORAGE_KEY = 'flowcraft.templates'
 
@@ -358,8 +359,9 @@ function App() {
   }
 
   const handleDiagramTypeChange = (nextDiagramType) => {
-    setDiagramType(nextDiagramType)
-    const nextReportConfig = getReportTemplateConfig(nextDiagramType)
+    const effectiveType = nextDiagramType === 'blank' ? 'basic' : nextDiagramType
+    setDiagramType(effectiveType)
+    const nextReportConfig = getReportTemplateConfig(effectiveType)
     if (nextReportConfig) {
       const [figureNumber, ...titleParts] = nextReportConfig.caption.split(/\s+/)
       setProjectConfig((current) => ({
@@ -368,8 +370,35 @@ function App() {
         figureTitle: titleParts.join(' ') || nextReportConfig.name,
         exportBaseName: current.exportBaseName
       }))
-      setStructuredInput(createDefaultStructuredText(nextDiagramType))
+      setStructuredInput(createDefaultStructuredText(effectiveType))
     }
+  }
+
+  const handleOrganizeText = (source = input) => {
+    const { text, caption } = organizeStructuredText(source)
+    if (!text) {
+      showFeedback('没有可整理的有效内容')
+      return
+    }
+    setStructuredInput(text)
+    setInput(source)
+    if (caption.figureNumber || caption.figureTitle) {
+      setProjectConfig((current) => ({
+        ...current,
+        figureNumber: caption.figureNumber || current.figureNumber,
+        figureTitle: caption.figureTitle || current.figureTitle,
+        exportBaseName: current.exportBaseName
+      }))
+      showFeedback('已整理为结构化内容，并同步图号和图题')
+      return
+    }
+    showFeedback('已整理为结构化内容')
+  }
+
+  const handleApplyStructuredInput = () => {
+    setInput(structuredInput.replace(/^\s*[*-]\s*/gm, '').replace(/\n{2,}/g, '\n'))
+    generate(structuredInput)
+    showFeedback('已应用到当前流程')
   }
 
   const copyText = async (text, message) => {
@@ -518,6 +547,8 @@ function App() {
           onDetectedOcrCaption={handleDetectedOcrCaption}
           onDetectedVisionTemplate={handleDetectedVisionTemplate}
           onVisionResult={setAiVisionResult}
+          onOrganizeText={handleOrganizeText}
+          onApplyStructuredInput={handleApplyStructuredInput}
           isImageAssistMode={isImageAssistMode}
           onImageAssistModeChange={setIsImageAssistMode}
           focusRedrawMode={focusRedrawMode}
@@ -542,6 +573,7 @@ function App() {
           onDownloadPptx={handleDownloadPptx}
           onDownloadMermaid={handleDownloadMermaid}
           onResetExample={resetExample}
+          onGenerate={() => generate()}
           feedback={feedback}
           onSvgReady={setCurrentSvg}
           reportSvg={reportSvg}

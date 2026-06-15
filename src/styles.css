@@ -1605,3 +1605,31 @@ input:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(37, 99, 2
     max-height: 64vh;
   }
 }
+
+/* FlowCraft 极简 4 步主流程 */
+.simple-flow-panel { display: grid; gap: 18px; }
+.flow-step-card { border: 1px solid #dbe7ef; border-radius: 20px; background: #fff; padding: 18px; }
+.step-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.step-heading span { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 999px; background: var(--primary); color: #fff; font-weight: 900; }
+.step-heading h2 { margin: 0; font-size: 18px; }
+.core-project-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.more-project-settings, .advanced-edit-panel, .project-config-details details, .advanced-recognition-panel, .debug-ocr-panel, .mermaid-code-details, .more-export-options { margin-top: 14px; }
+.simple-tabs { display: inline-flex; gap: 8px; padding: 4px; border: 1px solid var(--border); border-radius: 14px; background: #f8fafc; margin-bottom: 12px; }
+.simple-tabs button { border-radius: 10px; box-shadow: none; }
+.simple-tabs button.is-active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.project-config-compact { margin-top: 14px; }
+.project-json-preview { grid-column: 1 / -1; }
+.project-json-preview textarea { min-height: 120px; }
+.structured-editor { min-height: 260px; }
+.output-panel { position: sticky; top: 18px; }
+.output-panel:not(.is-collapsed) .preview-shell { max-height: 520px; min-height: 280px; overflow: auto; }
+.output-panel.is-collapsed .metadata-card { margin-bottom: 0; }
+.export-toolbar > button.primary { order: -1; }
+.simplified-image-import .assist-tabs,
+.simplified-image-import .preprocess-note-list { display: none; }
+.simplified-image-import .reference-viewer-panel { margin-top: 12px; }
+.simplified-image-import .reference-image-box { max-height: 320px; }
+@media (max-width: 1180px) {
+  .output-panel { position: static; }
+  .core-project-fields { grid-template-columns: 1fr; }
+}
