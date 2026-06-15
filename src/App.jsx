@@ -375,13 +375,22 @@ function App() {
   }
 
   const handleOrganizeText = (source = input) => {
-    const { text, caption } = organizeStructuredText(source)
+    console.log('[FlowCraft] organize text clicked')
+    const rawSource = typeof source === 'string' ? source : input
+    console.log('[FlowCraft] raw input length', rawSource.length)
+    if (!rawSource.trim()) {
+      showFeedback('请先输入流程内容。')
+      return
+    }
+    const { text, caption } = organizeStructuredText(rawSource)
+    console.log('[FlowCraft] structured result length', text.length)
     if (!text) {
       showFeedback('没有可整理的有效内容')
       return
     }
     setStructuredInput(text)
-    setInput(source)
+    console.log('[FlowCraft] structured content updated')
+    window.setTimeout(() => document.getElementById('structured-input')?.focus(), 0)
     if (caption.figureNumber || caption.figureTitle) {
       setProjectConfig((current) => ({
         ...current,
