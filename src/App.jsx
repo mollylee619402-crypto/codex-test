@@ -71,7 +71,13 @@ function App() {
   const [exportSize, setExportSize] = useState('word-page')
   const [pngScale, setPngScale] = useState(3)
   const [projectConfig, setProjectConfig] = useState(DEFAULT_PROJECT_CONFIG)
-  const [structuredInput, setStructuredInput] = useState(() => createDefaultStructuredText(DEFAULT_EXAMPLE.diagramType))
+  const [structuredInput, setStructuredInputState] = useState(() => createDefaultStructuredText(DEFAULT_EXAMPLE.diagramType))
+  const [diagramContent, setDiagramContent] = useState(() => {
+    const initialText = createDefaultStructuredText(DEFAULT_EXAMPLE.diagramType)
+    const initialParsed = parseStructuredInput(initialText, { templateType: DEFAULT_EXAMPLE.diagramType })
+    return { templateType: DEFAULT_EXAMPLE.diagramType, stages: initialParsed.stages }
+  })
+  const appliedStructuredInputRef = useRef(structuredInput)
   const [aiVisionResult, setAiVisionResult] = useState(null)
   const [isImageAssistMode, setIsImageAssistMode] = useState(true)
   const [focusRedrawMode, setFocusRedrawMode] = useState(true)
@@ -92,7 +98,6 @@ function App() {
     reportConfig ? getExportDimensions(reportConfig, exportPreset) : null
   ), [reportConfig, exportPreset])
   const parsedStructuredInput = useMemo(() => parseStructuredInput(structuredInput, { templateType: diagramType }), [structuredInput, diagramType])
-  const diagramContent = useMemo(() => ({ templateType: diagramType, stages: parsedStructuredInput.stages }), [diagramType, parsedStructuredInput])
   const displayMetadata = useMemo(() => ({
     ...metadata,
     title: projectConfig.figureTitle || metadata.title,
@@ -127,18 +132,48 @@ function App() {
     }
   }, [])
 
-  const generate = useCallback((source = input, nextConfig = config, nextDiagramContent = diagramContent) => {
+  const buildDiagramContentFromStructuredInput = useCallback((text, templateType = diagramType) => {
+    const source = String(text || '')
+    console.log('[FlowCraft] parsing structured input length', source.trim().length)
+    const parsed = parseStructuredInput(source, { templateType })
+    const nodesCount = parsed.stages.reduce((total, stage) => total + (stage.nodes || []).length + (stage.nodes || []).reduce((childTotal, node) => childTotal + (node.children || []).length, 0), 0)
+    console.log('[FlowCraft] parsed stages count', parsed.stages.length)
+    console.log('[FlowCraft] parsed nodes count', nodesCount)
+    return { diagramContent: { templateType, stages: parsed.stages }, parsed }
+  }, [diagramType])
+
+  const setStructuredInput = useCallback((nextValue) => {
+    setStructuredInputState(nextValue)
+    console.log('[FlowCraft] structured input updated')
+    const nextText = typeof nextValue === 'function' ? nextValue(structuredInput) : nextValue
+    const { diagramContent: nextDiagramContent } = buildDiagramContentFromStructuredInput(nextText, diagramType)
+    setDiagramContent(nextDiagramContent)
+    console.log('[FlowCraft] preview data updated')
+    console.log('[FlowCraft] preview template type', diagramType)
+  }, [buildDiagramContentFromStructuredInput, diagramType, structuredInput])
+
+  const generate = useCallback((source = input, nextConfig = config, nextDiagramContent = null) => {
     setIsPreviewCollapsed(false)
+    let effectiveDiagramContent = nextDiagramContent || diagramContent
+    if ((isReportTemplate(nextConfig.diagramType) || nextConfig.diagramType === 'basic') && !nextDiagramContent && appliedStructuredInputRef.current !== structuredInput) {
+      const parsedResult = buildDiagramContentFromStructuredInput(structuredInput, nextConfig.diagramType)
+      effectiveDiagramContent = parsedResult.diagramContent
+      setDiagramContent(effectiveDiagramContent)
+      appliedStructuredInputRef.current = structuredInput
+      console.log('[FlowCraft] preview data updated')
+      console.log('[FlowCraft] preview template type', nextConfig.diagramType)
+    }
     const nodes = (isReportTemplate(nextConfig.diagramType) || nextConfig.diagramType === 'basic')
-      ? structuredContentToMermaidNodes(nextDiagramContent)
+      ? structuredContentToMermaidNodes(effectiveDiagramContent)
       : parseFlowDescription(source)
     setMermaidCode(generateMermaid(nodes, nextConfig))
     setSummary(buildFlowSummary(nodes, nextConfig))
     setMetadata(generateReportMetadata(nextConfig, nodes))
-    if (isReportTemplate(nextConfig.diagramType) && parsedStructuredInput.errors.length) {
-      showFeedback(`结构化节点已生成，提示：${parsedStructuredInput.errors[0]}`, 3200)
+    const errors = parseStructuredInput(structuredInput, { templateType: nextConfig.diagramType }).errors
+    if (isReportTemplate(nextConfig.diagramType) && errors.length) {
+      showFeedback(`结构化节点已生成，提示：${errors[0]}`, 3200)
     }
-  }, [input, config, diagramContent, parsedStructuredInput.errors, showFeedback])
+  }, [input, config, diagramContent, structuredInput, buildDiagramContentFromStructuredInput, showFeedback])
 
   useEffect(() => {
     setTemplates(readTemplates())
@@ -372,7 +407,7 @@ function App() {
         figureTitle: titleParts.join(' ') || nextReportConfig.name,
         exportBaseName: current.exportBaseName
       }))
-      setStructuredInput(createDefaultStructuredText(effectiveType))
+      // 切换模板只同步图题/项目参数，不自动覆盖第 3 步结构化内容。
     }
   }
 
@@ -407,9 +442,21 @@ function App() {
   }
 
   const handleApplyStructuredInput = () => {
+    console.log('[FlowCraft] apply current flow clicked')
+    setDiagramContent({ templateType: diagramType, stages: [] })
+    console.log('[FlowCraft] previous diagramContent cleared')
+    const { diagramContent: nextDiagramContent, parsed } = buildDiagramContentFromStructuredInput(structuredInput, diagramType)
+    if (parsed.errors.length) {
+      showFeedback(`结构化内容解析失败：${parsed.errors[0]}`, 4200)
+      return
+    }
+    setDiagramContent(nextDiagramContent)
+    appliedStructuredInputRef.current = structuredInput
+    console.log('[FlowCraft] preview data updated')
+    console.log('[FlowCraft] preview template type', diagramType)
     setInput(structuredInput.replace(/^\s*[*-]\s*/gm, '').replace(/\n{2,}/g, '\n'))
-    generate(structuredInput)
-    showFeedback('已应用到当前流程')
+    generate(structuredInput, config, nextDiagramContent)
+    showFeedback('已应用当前结构化内容。')
   }
 
   const copyText = async (text, message) => {

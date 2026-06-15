@@ -267,9 +267,7 @@ export const generateEnvironmentalMermaid = (nodes, config = {}) => {
 
 export const generateMermaid = (nodes, config) => {
   if (config.diagramType === 'basic') return generateBasicMermaid(nodes)
-  if (config.diagramType === 'site-survey') return generateSiteSurveyMermaid(nodes, config)
-  if (config.diagramType === 'technical-service') return generateTechnicalServiceMermaid(nodes, config)
-  if (config.diagramType === 'project-org') return generateProjectOrgMermaid(nodes, config)
+  if (['site-survey', 'technical-service', 'project-org', 'remediation-route'].includes(config.diagramType)) return generateEnvironmentalMermaid(nodes, config)
   if (['environment-process', 'monitoring', 'eia', 'risk-assessment', 'emergency', 'operation'].includes(config.diagramType)) {
     return generateEnvironmentalMermaid(nodes, config)
   }

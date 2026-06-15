@@ -17,7 +17,7 @@ function textSvg(text, x, y, maxChars, lineHeight = 18, attrs = '') {
 
 export function renderBasicFlowSvg(diagramContent = {}, projectConfig = {}, metadata = {}) {
   const stages = (diagramContent.stages || []).filter((stage) => stage?.title || stage?.nodes?.length)
-  const safeStages = stages.length ? stages : [{ title: '流程内容', nodes: [{ text: '请在第 3 步编辑结构化内容', children: [] }] }]
+  const safeStages = stages.length ? stages : [{ title: '请先输入内容', nodes: [] }]
   const width = 1120
   const margin = 48
   const stageGap = 34

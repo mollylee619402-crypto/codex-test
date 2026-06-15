@@ -155,7 +155,7 @@ export function drawCaption(caption, x, y, options = {}) {
 }
 
 
-function nextLabel(labels, index, fallback) {
+function nextLabel(labels, index, fallback = '') {
   const value = labels[index]
   return value ? { label: value, nextIndex: index + 1 } : { label: fallback, nextIndex: index }
 }
@@ -177,20 +177,20 @@ export function withSiteSurveyContent(projectConfig = {}, diagramContent = {}) {
   }
   let i = 0
   layout.nodes.slice(0, 4).forEach((node, index) => {
-    const result = nextLabel(labels, i, node.label)
+    const result = nextLabel(labels, i, '')
     layout.nodes[index].label = result.label
     i = result.nextIndex
   })
-  let result = nextLabel(labels, i, layout.group.label)
+  let result = nextLabel(labels, i, '')
   layout.group.label = result.label
   i = result.nextIndex
   layout.group.children.forEach((child, index) => {
-    result = nextLabel(labels, i, child.label)
+    result = nextLabel(labels, i, '')
     layout.group.children[index].label = result.label
     i = result.nextIndex
   })
   layout.nodes.slice(4).forEach((node, offset) => {
-    result = nextLabel(labels, i, node.label)
+    result = nextLabel(labels, i, '')
     layout.nodes[offset + 4].label = result.label
     i = result.nextIndex
   })
@@ -202,7 +202,7 @@ export function withTechnicalServiceContent(projectConfig = {}, diagramContent =
   const layout = {
     ...TECHNICAL_SERVICE_REPORT_LAYOUT,
     caption: captionFromProjectConfig(projectConfig, TECHNICAL_SERVICE_REPORT_LAYOUT.caption),
-    stages: TECHNICAL_SERVICE_REPORT_LAYOUT.stages.map((stage, index) => ({ ...stage, label: stages[index]?.title || stage.label })),
+    stages: TECHNICAL_SERVICE_REPORT_LAYOUT.stages.map((stage, index) => ({ ...stage, label: stages[index]?.title || '' })),
     nodes: TECHNICAL_SERVICE_REPORT_LAYOUT.nodes.map((node) => ({ ...node }))
   }
   layout.stages.forEach((stage, stageIndex) => {
@@ -210,7 +210,7 @@ export function withTechnicalServiceContent(projectConfig = {}, diagramContent =
     let i = 0
     layout.nodes.forEach((node, nodeIndex) => {
       if (node.stage !== stage.id) return
-      const result = nextLabel(labels, i, node.label)
+      const result = nextLabel(labels, i, '')
       layout.nodes[nodeIndex].label = result.label
       i = result.nextIndex
     })
