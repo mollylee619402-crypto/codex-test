@@ -1,9 +1,18 @@
 import { ENVIRONMENT_EXAMPLES } from './environmentExamples.js'
 
-export const DEFAULT_EXAMPLE = ENVIRONMENT_EXAMPLES[0]
+export const DEFAULT_EXAMPLE = {
+  name: '基础流程图（推荐）',
+  diagramType: 'basic',
+  outputPurpose: '环保工程技术报告',
+  style: '技术报告',
+  content: '确定调查对象\n工作准备\n基本信息核实\n资料收集\n现场踏勘\n人员访谈',
+  structuredInput: '图题：图5.6-1 项目整治技术路线图\n\n阶段一：项目整治技术路线\n\n* 消除上游污染源\n  * 洗金场堆存尾砂清挖运输\n  * 水泥窑协同处置\n  * 尾砂堆场风险管控生态修复\n* 河道污染底泥处置\n  * 清淤\n  * 清表\n  * 围堰导流\n  * 涵洞清淤\n  * 底泥预处理',
+  projectConfig: { figureNumber: '图5.6-1', figureTitle: '项目整治技术路线图' }
+}
 
 export const DIAGRAM_TYPES = [
-  { label: '基础版流程图', value: 'basic' },
+  { label: '基础流程图（推荐）', value: 'basic' },
+  { label: '报告版流程图', value: 'technical-service' },
   { label: '美化版流程图', value: 'beautified' },
   { label: '产品流程图', value: 'product' },
   { label: 'SOP 流程图', value: 'sop' },

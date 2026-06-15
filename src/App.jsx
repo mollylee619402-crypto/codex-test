@@ -18,6 +18,7 @@ import { buildProjectConfigPayload, downloadProjectConfigJson, serializeProjectC
 import { normalizeImportedProjectConfig, readProjectConfigFile } from './utils/projectConfigImport.js'
 import { deleteProjectConfigFromLibrary, readProjectConfigs, saveProjectConfigToLibrary } from './utils/projectConfigStorage.js'
 import { organizeStructuredText } from './utils/structuredTextOrganizer.js'
+import { renderBasicFlowSvg } from './utils/basicFlowRenderer.js'
 
 const STORAGE_KEY = 'flowcraft.templates'
 
@@ -84,7 +85,7 @@ function App() {
 
   const config = useMemo(() => ({ diagramType, diagramTypeLabel, outputPurpose, style }), [diagramType, diagramTypeLabel, outputPurpose, style])
 
-  const isReportSvg = useMemo(() => isReportTemplate(diagramType), [diagramType])
+  const isReportSvg = useMemo(() => isReportTemplate(diagramType) || diagramType === 'basic', [diagramType])
   const reportConfig = useMemo(() => getReportTemplateConfig(diagramType), [diagramType])
   const exportPreset = useMemo(() => getExportSizePreset(exportSize), [exportSize])
   const reportExportDimensions = useMemo(() => (
@@ -98,9 +99,10 @@ function App() {
     caption: captionFromProjectConfig(projectConfig, reportConfig?.caption || metadata.caption),
     description: `${projectConfig.projectName || '本项目'}（${projectConfig.reportUse || outputPurpose}）${metadata.description ? `：${metadata.description}` : ''}`
   }), [metadata, projectConfig, reportConfig, outputPurpose])
-  const reportSvg = useMemo(() => (
-    isReportSvg ? renderReportSvg(diagramType, input, displayMetadata, projectConfig, diagramContent) : ''
-  ), [diagramType, input, displayMetadata, projectConfig, diagramContent, isReportSvg])
+  const reportSvg = useMemo(() => {
+    if (diagramType === 'basic') return renderBasicFlowSvg(diagramContent, projectConfig, displayMetadata)
+    return isReportTemplate(diagramType) ? renderReportSvg(diagramType, input, displayMetadata, projectConfig, diagramContent) : ''
+  }, [diagramType, input, displayMetadata, projectConfig, diagramContent])
 
   const currentProjectConfigPayload = useMemo(() => buildProjectConfigPayload({
     templateType: diagramType,
@@ -127,7 +129,7 @@ function App() {
 
   const generate = useCallback((source = input, nextConfig = config, nextDiagramContent = diagramContent) => {
     setIsPreviewCollapsed(false)
-    const nodes = isReportTemplate(nextConfig.diagramType)
+    const nodes = (isReportTemplate(nextConfig.diagramType) || nextConfig.diagramType === 'basic')
       ? structuredContentToMermaidNodes(nextDiagramContent)
       : parseFlowDescription(source)
     setMermaidCode(generateMermaid(nodes, nextConfig))
@@ -153,7 +155,7 @@ function App() {
       style: DEFAULT_EXAMPLE.style
     }
     const initialParsed = parseStructuredInput(createDefaultStructuredText(DEFAULT_EXAMPLE.diagramType), { templateType: DEFAULT_EXAMPLE.diagramType })
-    const nodes = isReportTemplate(DEFAULT_EXAMPLE.diagramType) ? structuredContentToMermaidNodes(initialParsed) : parseFlowDescription(DEFAULT_EXAMPLE.content)
+    const nodes = (isReportTemplate(DEFAULT_EXAMPLE.diagramType) || DEFAULT_EXAMPLE.diagramType === 'basic') ? structuredContentToMermaidNodes(initialParsed) : parseFlowDescription(DEFAULT_EXAMPLE.content)
     setMermaidCode(generateMermaid(nodes, initialConfig))
     setSummary(buildFlowSummary(nodes, initialConfig))
     setMetadata(generateReportMetadata(initialConfig, nodes))
@@ -342,11 +344,11 @@ function App() {
         exportBaseName: current.exportBaseName
       }))
     }
-    if (visionResult?.templateType && DIAGRAM_TYPES.some((type) => type.value === visionResult.templateType)) {
-      setDiagramType(visionResult.templateType)
-    }
+    setDiagramType('basic')
     setAiVisionResult(visionResult || null)
-    setStructuredInput(nextStructuredInput)
+    const organized = organizeStructuredText(nextStructuredInput)
+    const fallbackImageText = `阶段一：图片识别结果\n${nextStructuredInput.split(/\r?\n/).filter(Boolean).map((line) => `* ${line.trim()}`).join('\n')}`
+    setStructuredInput(organized.text || fallbackImageText)
     setInput(nextStructuredInput.replace(/^\s*[*-]\s*/gm, '').replace(/\n{2,}/g, '\n'))
     showFeedback(visionResult ? 'AI 识图结果已应用到结构化节点编辑区' : '图片识别结果已应用到结构化节点编辑区', 2600)
   }
@@ -587,6 +589,7 @@ function App() {
           onSvgReady={setCurrentSvg}
           reportSvg={reportSvg}
           isReportSvg={isReportSvg}
+          diagramType={diagramType}
           exportSize={exportSize}
           setExportSize={setExportSize}
           collapsed={isPreviewCollapsed}

@@ -26,6 +26,7 @@ function OutputPanel({
   onSvgReady,
   reportSvg = '',
   isReportSvg = false,
+  diagramType = '',
   exportSize = 'word-page',
   setExportSize,
   collapsed = false,
@@ -62,7 +63,7 @@ function OutputPanel({
           <select value={pngScale} onChange={(event) => setPngScale?.(Number(event.target.value))}>
             {pngScaleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
-          {isReportSvg && !collapsed && <span className="export-option-tip">报告版模板默认使用超清 3x。</span>}
+          {isReportSvg && diagramType !== 'basic' && !collapsed && <span className="export-option-tip">报告版模板默认使用超清 3x。</span>}
         </label>
       </div>
 
@@ -97,8 +98,8 @@ function OutputPanel({
           </details>
 
           <div className="preview-section">
-            <h3>{isReportSvg ? '报告版 SVG 预览' : '流程图实时预览区'}</h3>
-            {isReportSvg && <p className="report-svg-tip">{REPORT_SVG_NOTICE}</p>}
+            <h3>{diagramType === 'basic' ? '基础流程图实时预览' : isReportSvg ? '报告版 SVG 预览' : '流程图实时预览区'}</h3>
+            {isReportSvg && diagramType !== 'basic' && <p className="report-svg-tip">{REPORT_SVG_NOTICE}</p>}
             {isReportSvg
               ? <ReportSvgPreview svg={reportSvg} onSvgReady={onSvgReady} />
               : <MermaidPreview code={mermaidCode} onSvgReady={onSvgReady} />}
