@@ -430,6 +430,36 @@ function drawTechnicalServiceReport(slide, pptx, metadata, slideSize = { width: 
   addReportText(slide, metadata.caption || layout.caption, 0.4, toY(layout.captionY) - 0.06, 9.2, 0.28, { fontSize: 12, bold: true })
 }
 
+
+function drawBasicStructured(slide, pptx, metadata, slideSize = { width: 13.333, height: 7.5 }, diagramContent = {}) {
+  const stages = (diagramContent.stages || []).length ? diagramContent.stages : [{ title: '流程内容', nodes: [{ text: '请编辑结构化内容', children: [] }] }]
+  slide.addText(metadata.title || '基础流程图', { x: 0.45, y: 0.18, w: slideSize.width - 0.9, h: 0.32, fontFace: 'Microsoft YaHei', fontSize: 17, bold: true, color: '17324D', align: 'center' })
+  const marginX = 0.45
+  const top = 0.75
+  const bottom = 0.55
+  const gap = 0.22
+  const stageH = (slideSize.height - top - bottom - gap * (stages.length - 1)) / Math.max(stages.length, 1)
+  stages.forEach((stage, stageIndex) => {
+    const y = top + stageIndex * (stageH + gap)
+    slide.addShape(pptx.ShapeType.roundRect, { x: marginX, y, w: slideSize.width - marginX * 2, h: stageH, rectRadius: 0.05, fill: { color: 'F6F9FC' }, line: { color: 'BFD0DF', width: 1, dash: 'dash' } })
+    slide.addText(stage.title || `阶段${stageIndex + 1}`, { x: marginX + 0.18, y: y + 0.07, w: slideSize.width - 1.25, h: 0.25, fontFace: 'Microsoft YaHei', fontSize: 10.5, bold: true, color: '17324D' })
+    const nodes = stage.nodes || []
+    const nodeGap = Math.max(0.08, (stageH - 0.55 - nodes.length * 0.38) / Math.max(nodes.length - 1, 1))
+    nodes.forEach((node, nodeIndex) => {
+      const ny = y + 0.44 + nodeIndex * (0.38 + nodeGap)
+      addNode(slide, pptx, node.text, marginX + 0.55, ny, 2.45, 0.34, nodeIndex === nodes.length - 1 ? 'document' : 'process')
+      if (nodeIndex < nodes.length - 1) addArrow(slide, pptx, marginX + 1.78, ny + 0.34, marginX + 1.78, ny + 0.38 + nodeGap)
+      ;(node.children || []).slice(0, 8).forEach((child, childIndex) => {
+        const col = childIndex % 3
+        const row = Math.floor(childIndex / 3)
+        addNode(slide, pptx, child, marginX + 3.35 + col * 2.15, ny + row * 0.41, 1.9, 0.31, 'task')
+      })
+      if ((node.children || []).length) addArrow(slide, pptx, marginX + 3.0, ny + 0.17, marginX + 3.28, ny + 0.17)
+    })
+  })
+  slide.addText(metadata.caption || '', { x: 0.45, y: slideSize.height - 0.38, w: slideSize.width - 0.9, h: 0.24, fontFace: 'Microsoft YaHei', fontSize: 10.5, bold: true, color: '334155', align: 'center' })
+}
+
 function addInfoSlide(slide, metadata, summary, isTallLayout = false) {
   slide.background = { color: 'F8FAFC' }
   const width = isTallLayout ? 8.9 : 12.1
@@ -482,6 +512,8 @@ export async function downloadEditablePptx({ mermaidCode, metadata, summary, dia
     drawTechnicalServiceReport(slide, pptx, metadata, slideSize, projectConfig, diagramContent)
   } else if (reportType === 'organization') {
     drawOrg(slide, pptx, slideSize, projectConfig, diagramContent)
+  } else if (diagramType === 'basic') {
+    drawBasicStructured(slide, pptx, metadata, slideSize, diagramContent)
   } else {
     slide.addText(metadata.title, { x: 0.45, y: 0.25, w: 12.4, h: 0.35, fontFace: 'Microsoft YaHei', fontSize: 18, bold: true, color: '17324D', align: 'center' })
 

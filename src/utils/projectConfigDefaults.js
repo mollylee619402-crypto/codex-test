@@ -2,8 +2,8 @@ import { TECHNICAL_SERVICE_REPORT_LAYOUT, SITE_SURVEY_REPORT_LAYOUT, ORGANIZATIO
 
 export const DEFAULT_PROJECT_CONFIG = {
   projectName: '某化工企业污染场地调查与风险评估项目',
-  figureNumber: '图3-2',
-  figureTitle: '资料收集分析与踏勘工作流程图',
+  figureNumber: '图5.6-1',
+  figureTitle: '项目整治技术路线图',
   reportUse: '环保工程技术报告',
   projectType: '污染场地调查与风险评估',
   serviceTarget: '建设单位或服务对象',
@@ -48,7 +48,32 @@ export function createDefaultStructuredText(templateType = 'technical-service') 
   }
 
   if (templateType === 'basic') {
-    return ['阶段一：普通流程图', '* 启动', '* 准备', '* 实施', '* 检查', '* 提交成果'].join('\n')
+    return [
+      '图题：图5.6-1 项目整治技术路线图',
+      '',
+      '阶段一：项目整治技术路线',
+      '',
+      '* 消除上游污染源',
+      '  * 洗金场堆存尾砂清挖运输',
+      '  * 水泥窑协同处置',
+      '  * 尾砂堆场风险管控生态修复',
+      '* 河道污染底泥处置',
+      '  * 清淤',
+      '  * 清表',
+      '  * 围堰导流',
+      '  * 涵洞清淤',
+      '  * 底泥预处理',
+      '',
+      '阶段二：效果评估',
+      '',
+      '* 工程完成情况',
+      '  * 清淤量',
+      '  * 护岸量',
+      '  * 生态修复面积',
+      '* 环境风险变化',
+      '  * As、Cd变化',
+      '  * 潜在生态风险等级变化'
+    ].join('\n')
   }
 
   if (templateType === 'project-org' || templateType === 'organization') {

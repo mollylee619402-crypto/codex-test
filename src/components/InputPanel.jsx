@@ -7,11 +7,12 @@ import ProjectConfigManager from './ProjectConfigManager'
 import ImageImportPanel from './ImageImportPanel'
 
 const CORE_TEMPLATE_TYPES = [
-  { label: '资料收集与踏勘流程图', value: 'site-survey' },
-  { label: '技术服务总体流程图', value: 'technical-service' },
-  { label: '项目组织架构图', value: 'project-org' },
-  { label: '项目整治技术路线图', value: 'remediation-route' },
-  { label: '普通流程图', value: 'basic' },
+  { label: '基础流程图（推荐）', value: 'basic' },
+  { label: '报告版流程图', value: 'technical-service' },
+  { label: '组织结构图', value: 'project-org' },
+  { label: '普通流程图', value: 'beautified' },
+  { label: '更多模板：资料收集与踏勘流程图', value: 'site-survey' },
+  { label: '更多模板：项目整治技术路线图', value: 'remediation-route' },
   { label: '空白新建', value: 'blank' }
 ]
 
