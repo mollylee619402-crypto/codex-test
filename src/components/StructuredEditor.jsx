@@ -6,6 +6,7 @@ function StructuredEditor({ value, onChange, parserErrors = [] }) {
         <span>请在这里校对和调整最终内容。生成流程图时将以此处内容为准。</span>
       </div>
       <textarea
+        id="structured-input"
         className="structured-editor"
         value={value}
         onChange={(event) => onChange(event.target.value)}

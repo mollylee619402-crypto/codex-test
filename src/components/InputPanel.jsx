@@ -64,7 +64,7 @@ function InputPanel({
               placeholder="粘贴流程说明、节点列表、报告段落或已有结构化内容，系统会整理为阶段、节点和子节点。"
             />
             <div className="button-row">
-              <button type="button" className="primary" onClick={onOrganizeText}>整理为结构化内容</button>
+              <button type="button" className="primary" onClick={() => onOrganizeText(input)}>整理为结构化内容</button>
               <button type="button" onClick={() => setInput('')}>清空输入</button>
             </div>
           </div>
