@@ -1,5 +1,3 @@
-import { createDefaultStructuredText } from './projectConfigDefaults.js'
-
 const STAGE_RE = /^(?:#{1,6}\s*)?阶段\s*([一二三四五六七八九十\d]+)?\s*[：:、.-]?\s*(.+)?$/
 const CAPTION_RE = /^图题\s*[：:]\s*(.+)$/
 const BULLET_RE = /^(\s*)(?:[-*•·]|\d+[.)、])\s*(.+)$/
@@ -13,8 +11,7 @@ function flattenStageNodes(stage) {
 }
 
 export function parseStructuredInput(text, options = {}) {
-  const fallbackText = createDefaultStructuredText(options.templateType)
-  const source = String(text || '').trim() || fallbackText
+  const source = String(text || '').trim()
   const errors = []
   const stages = []
   let captionText = ''
@@ -39,7 +36,7 @@ export function parseStructuredInput(text, options = {}) {
     const bulletMatch = rawLine.match(BULLET_RE)
     if (bulletMatch) {
       if (!currentStage) {
-        currentStage = { title: '未命名阶段', nodes: [] }
+        currentStage = { title: '流程内容', nodes: [] }
         stages.push(currentStage)
       }
       const indent = bulletMatch[1].replace(/\t/g, '  ').length
@@ -57,13 +54,8 @@ export function parseStructuredInput(text, options = {}) {
     errors.push(`未识别的行：${rawLine.trim()}`)
   })
 
-  if (!options.allowEmpty && (!stages.length || stages.every((stage) => !stage.nodes.length))) {
-    const fallback = parseStructuredInput(fallbackText, { templateType: options.templateType, _fallback: true })
-    return {
-      ...fallback,
-      errors: ['未识别到阶段或节点，已使用默认结构兜底。'],
-      isFallback: true
-    }
+  if (!stages.length && source) {
+    stages.push({ title: '流程内容', nodes: [] })
   }
 
   return {
