@@ -1,156 +1,96 @@
-import { DIAGRAM_TYPES, ENVIRONMENT_EXAMPLES, OUTPUT_PURPOSES, STYLE_OPTIONS } from '../data/examples'
-import { PROJECT_PRESETS } from '../utils/projectConfigDefaults.js'
+import { useState } from 'react'
+import { DIAGRAM_TYPES, OUTPUT_PURPOSES } from '../data/examples'
+import { createDefaultStructuredText } from '../utils/projectConfigDefaults.js'
 import ProjectConfigPanel from './ProjectConfigPanel'
 import StructuredEditor from './StructuredEditor'
-import TemplatePresetSelector from './TemplatePresetSelector'
-import TemplateManager from './TemplateManager'
 import ProjectConfigManager from './ProjectConfigManager'
 import ImageImportPanel from './ImageImportPanel'
 
+const CORE_TEMPLATE_TYPES = [
+  { label: '资料收集与踏勘流程图', value: 'site-survey' },
+  { label: '技术服务总体流程图', value: 'technical-service' },
+  { label: '项目组织架构图', value: 'project-org' },
+  { label: '项目整治技术路线图', value: 'remediation-route' },
+  { label: '普通流程图', value: 'basic' },
+  { label: '空白新建', value: 'blank' }
+]
+
 function InputPanel({
-  input,
-  setInput,
-  diagramType,
-  setDiagramType,
-  outputPurpose,
-  setOutputPurpose,
-  style,
-  setStyle,
-  onGenerate,
-  onClear,
-  onSaveTemplate,
-  onLoadEnvironmentExample,
-  projectConfig,
-  setProjectConfig,
-  structuredInput,
-  setStructuredInput,
-  parserErrors,
-  onApplyProjectPreset,
-  templates,
-  onLoadTemplate,
-  onDeleteTemplate,
-  projectConfigs,
-  currentConfigJson,
-  onSaveProjectConfig,
-  onLoadProjectConfig,
-  onDeleteProjectConfig,
-  onExportCurrentProjectConfig,
-  onExportProjectConfig,
-  onCopyProjectConfigJson,
-  onImportProjectConfig,
-  onApplyImageImport,
-  onDetectedOcrCaption,
-  onDetectedVisionTemplate,
-  onVisionResult,
-  isImageAssistMode = true,
-  onImageAssistModeChange,
-  focusRedrawMode = false,
-  onFocusRedrawModeChange
+  input, setInput, diagramType, setDiagramType, outputPurpose, setOutputPurpose,
+  projectConfig, setProjectConfig, structuredInput, setStructuredInput, parserErrors,
+  currentConfigJson, onSaveProjectConfig, onLoadProjectConfig, onDeleteProjectConfig,
+  onExportCurrentProjectConfig, onExportProjectConfig, onCopyProjectConfigJson, onImportProjectConfig,
+  projectConfigs, onApplyImageImport, onDetectedOcrCaption, onDetectedVisionTemplate, onVisionResult,
+  onOrganizeText, onApplyStructuredInput
 }) {
-  const handleExampleChange = (event) => {
-    const example = ENVIRONMENT_EXAMPLES.find((item) => item.id === event.target.value)
-    if (example) onLoadEnvironmentExample(example)
+  const [activeTab, setActiveTab] = useState('text')
+
+  const handleTemplateChange = (event) => {
+    const value = event.target.value
+    if (value === 'blank') {
+      setDiagramType('basic')
+      setStructuredInput('')
+      setInput('')
+      return
+    }
+    setDiagramType(value)
+    setStructuredInput(createDefaultStructuredText(value))
   }
 
   return (
-    <section className="panel input-panel">
-      <div className="panel-heading">
-        <h2>输入与配置</h2>
-        <span>把复杂流程变成清晰图示</span>
-      </div>
-
-      <div className="example-switcher">
-        <label className="field-label">
-          环保工程内置示例
-          <select defaultValue="" onChange={handleExampleChange}>
-            <option value="" disabled>选择示例并载入</option>
-            {ENVIRONMENT_EXAMPLES.map((example) => <option value={example.id} key={example.id}>{example.name}</option>)}
+    <section className="panel input-panel simple-flow-panel">
+      <section className="flow-step-card">
+        <div className="step-heading"><span>1</span><h2>第 1 步：选择项目类型</h2></div>
+        <label className="field-label">图件模板
+          <select value={CORE_TEMPLATE_TYPES.some((type) => type.value === diagramType) ? diagramType : 'basic'} onChange={handleTemplateChange}>
+            {CORE_TEMPLATE_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
           </select>
         </label>
-        <div className="preset-block">
-          <strong>示例一键套用</strong>
-          <TemplatePresetSelector presets={PROJECT_PRESETS} onApply={onApplyProjectPreset} />
+        <ProjectConfigPanel projectConfig={{ ...projectConfig, reportUse: outputPurpose }} onChange={(next) => { setProjectConfig(next); if (next.reportUse) setOutputPurpose(next.reportUse) }} currentConfigJson={currentConfigJson} />
+      </section>
+
+      <section className="flow-step-card">
+        <div className="step-heading"><span>2</span><h2>第 2 步：输入内容或上传截图</h2></div>
+        <div className="simple-tabs" role="tablist">
+          <button type="button" className={activeTab === 'text' ? 'is-active' : ''} onClick={() => setActiveTab('text')}>文字输入</button>
+          <button type="button" className={activeTab === 'image' ? 'is-active' : ''} onClick={() => setActiveTab('image')}>图片识别</button>
         </div>
-      </div>
+        {activeTab === 'text' ? (
+          <div className="simple-tab-panel">
+            <textarea
+              id="flow-input"
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              placeholder="粘贴流程说明、节点列表、报告段落或已有结构化内容，系统会整理为阶段、节点和子节点。"
+            />
+            <div className="button-row">
+              <button type="button" className="primary" onClick={onOrganizeText}>整理为结构化内容</button>
+              <button type="button" onClick={() => setInput('')}>清空输入</button>
+            </div>
+          </div>
+        ) : (
+          <ImageImportPanel onApply={onApplyImageImport} onDetectedCaption={onDetectedOcrCaption} diagramType={diagramType} projectConfig={projectConfig} onTemplateTypeDetected={onDetectedVisionTemplate} onVisionResult={onVisionResult} />
+        )}
+      </section>
 
-      <label className="field-label" htmlFor="flow-input">流程描述</label>
-      <textarea
-        id="flow-input"
-        value={input}
-        onChange={(event) => setInput(event.target.value)}
-        placeholder="粘贴流程描述、PRD、会议纪要、SOP、环保工程技术报告流程或项目组织架构描述……"
-      />
-
-      <ProjectConfigPanel projectConfig={projectConfig} onChange={setProjectConfig} />
-
-      <div className="redraw-focus-switch" aria-label="图片辅助重绘工作台开关">
-        <div>
-          <strong>专注重绘模式</strong>
-          <span>{isImageAssistMode ? '已优先放大参考图、节点草稿和结构化编辑区' : '切换到图片辅助重绘后将自动优化工作台宽度'}</span>
+      <section className="flow-step-card">
+        <div className="step-heading"><span>3</span><h2>第 3 步：编辑结构化内容</h2></div>
+        <StructuredEditor value={structuredInput} onChange={setStructuredInput} parserErrors={parserErrors} />
+        <div className="button-row">
+          <button type="button" onClick={() => setStructuredInput(createDefaultStructuredText(diagramType))}>套用当前模板默认内容</button>
+          <button type="button" onClick={() => onOrganizeText(structuredInput)}>格式化结构化内容</button>
+          <button type="button" onClick={() => setStructuredInput('')}>清空内容</button>
+          <button type="button" className="primary" onClick={onApplyStructuredInput}>应用到当前流程</button>
         </div>
-        <label className="switch-control">
-          <input type="checkbox" checked={focusRedrawMode} onChange={(event) => onFocusRedrawModeChange?.(event.target.checked)} />
-          <span>{focusRedrawMode ? '已开启' : '已关闭'}</span>
-        </label>
-      </div>
+        <details className="advanced-edit-panel"><summary>高级编辑</summary><p className="empty-tip">复杂节点树、草稿区和手动层级调整已默认隐藏。可继续直接编辑上方结构化文本。</p></details>
+      </section>
 
-      <ImageImportPanel onApply={onApplyImageImport} onDetectedCaption={onDetectedOcrCaption} diagramType={diagramType} projectConfig={projectConfig} onTemplateTypeDetected={onDetectedVisionTemplate} onVisionResult={onVisionResult} onAssistModeChange={onImageAssistModeChange} />
-
-      <StructuredEditor value={structuredInput} onChange={setStructuredInput} parserErrors={parserErrors} />
-
-      <div className="form-grid">
-        <label className="field-label">
-          流程图类型
-          <select value={diagramType} onChange={(event) => setDiagramType(event.target.value)}>
-            {DIAGRAM_TYPES.map((type) => (
-              <option value={type.value} key={type.value}>{type.label}</option>
-            ))}
-          </select>
-        </label>
-
-        <label className="field-label">
-          输出用途
-          <select value={outputPurpose} onChange={(event) => setOutputPurpose(event.target.value)}>
-            {OUTPUT_PURPOSES.map((purpose) => <option key={purpose}>{purpose}</option>)}
-          </select>
-        </label>
-
-        <label className="field-label">
-          风格
-          <select value={style} onChange={(event) => setStyle(event.target.value)}>
-            {STYLE_OPTIONS.map((item) => <option key={item}>{item}</option>)}
-          </select>
-        </label>
-      </div>
-
-      <div className="button-row">
-        <button type="button" className="primary" onClick={onGenerate}>生成流程图</button>
-        <button type="button" onClick={onClear}>清空内容</button>
-        <button type="button" onClick={onSaveTemplate}>保存为模板</button>
-      </div>
-
-      <div className="visio-tip">
-        <strong>导出提示：</strong>进入 Visio 调整建议下载 SVG 后插入；若需要文字和节点尽量可编辑，建议下载 PPTX 可编辑版。
-      </div>
-
-      <div className="template-card">
-        <ProjectConfigManager
-          projectConfigs={projectConfigs}
-          currentConfigJson={currentConfigJson}
-          onSaveCurrent={onSaveProjectConfig}
-          onLoadConfig={onLoadProjectConfig}
-          onDeleteConfig={onDeleteProjectConfig}
-          onExportCurrent={onExportCurrentProjectConfig}
-          onExportConfig={onExportProjectConfig}
-          onCopyCurrentJson={onCopyProjectConfigJson}
-          onImportConfig={onImportProjectConfig}
-        />
-      </div>
-
-      <div className="template-card">
-        <h3>我的模板</h3>
-        <TemplateManager templates={templates} onLoadTemplate={onLoadTemplate} onDeleteTemplate={onDeleteTemplate} />
-      </div>
+      <section className="flow-step-card project-config-details">
+        <details>
+          <summary>保存 / 加载项目配置</summary>
+          <ProjectConfigManager projectConfigs={projectConfigs} currentConfigJson={currentConfigJson} onSaveCurrent={onSaveProjectConfig} onLoadConfig={onLoadProjectConfig} onDeleteConfig={onDeleteProjectConfig} onExportCurrent={onExportCurrentProjectConfig} onExportConfig={onExportProjectConfig} onCopyCurrentJson={onCopyProjectConfigJson} onImportConfig={onImportProjectConfig} />
+        </details>
+      </section>
     </section>
   )
 }

@@ -21,6 +21,7 @@ function OutputPanel({
   onDownloadPptx,
   onDownloadMermaid,
   onResetExample,
+  onGenerate,
   feedback,
   onSvgReady,
   reportSvg = '',
@@ -34,7 +35,7 @@ function OutputPanel({
     <section className={`panel output-panel ${collapsed ? 'is-collapsed' : ''}`}>
       <div className="panel-heading output-heading">
         <div>
-          <h2>输出与预览</h2>
+          <h2>第 4 步：生成并导出流程图</h2>
           {feedback && <span className="feedback">{feedback}</span>}
         </div>
         <button type="button" className="preview-toggle-button" onClick={onToggleCollapsed}>
@@ -50,14 +51,14 @@ function OutputPanel({
 
       <div className="export-options-row compact-export-options">
         <label className="field-label export-size-field">
-          导出尺寸
+          页面适配
           <select value={exportSize} onChange={(event) => setExportSize?.(event.target.value)}>
-            {Object.entries(EXPORT_SIZE_PRESETS).map(([value, preset]) => <option key={value} value={value}>{preset.label}</option>)}
+            {Object.entries(EXPORT_SIZE_PRESETS).filter(([value]) => ['word-page', 'ppt-16-9', 'original'].includes(value)).map(([value, preset]) => <option key={value} value={value}>{preset.label}</option>)}
           </select>
         </label>
 
         <label className="field-label export-size-field">
-          PNG 倍率
+          PNG 清晰度
           <select value={pngScale} onChange={(event) => setPngScale?.(Number(event.target.value))}>
             {pngScaleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
@@ -66,9 +67,10 @@ function OutputPanel({
       </div>
 
       <div className="export-toolbar" aria-label="导出工具栏">
-        <button type="button" onClick={onDownloadSvg}>下载 SVG</button>
+        <button type="button" className="primary" onClick={onGenerate}>生成流程图</button>
         <button type="button" onClick={onDownloadPng} disabled={isPngExporting}>{pngButtonLabel}</button>
-        <button type="button" onClick={onDownloadPptx}>下载 PPTX 可编辑版</button>
+        <button type="button" onClick={onDownloadSvg}>下载 SVG</button>
+        <button type="button" onClick={onDownloadPptx}>下载 PPTX</button>
         <button type="button" onClick={onCopyMetadata}>复制图题与说明</button>
         <button type="button" onClick={onDownloadMermaid}>下载 Mermaid 源码</button>
         <details className="more-export-options">
@@ -76,7 +78,7 @@ function OutputPanel({
           <div>
             <button type="button" className="primary" onClick={onCopyCode}>复制 Mermaid 代码</button>
             <button type="button" onClick={onCopyPrompt}>复制提示词</button>
-            <button type="button" onClick={onResetExample}>重置示例</button>
+            
           </div>
         </details>
       </div>

@@ -42,7 +42,7 @@ const ASSIST_NODE_LABELS = {
   [ASSIST_NODE_TYPES.CAPTION]: '图题'
 }
 
-const AI_QUOTA_FALLBACK_MESSAGE = 'AI 识图额度不足。你可以使用批量粘贴整理或参考图辅助整理，不影响 SVG / PNG / PPTX 生成。'
+const AI_QUOTA_FALLBACK_MESSAGE = 'AI 识图额度不足。你可以继续使用文字输入或本地 OCR，不影响流程图生成和导出。'
 const STAGE_NUMERALS = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
 
 const TEMPLATE_STRUCTURES = [
@@ -845,15 +845,13 @@ function ImageImportPanel({ onApply, onDetectedCaption, diagramType, projectConf
   )
 
   return (
-    <section className="config-card image-import-panel">
+    <section className="config-card image-import-panel simplified-image-import">
       <div className="config-card-heading">
-        <h3>参考图辅助整理</h3>
-        <span>参考图查看 + 批量粘贴整理 + 结构树编辑 + 模板生成</span>
+        <h3>图片识别</h3>
+        <span>上传 / 粘贴 / 拖拽截图后识别为可编辑文本</span>
       </div>
 
-      <p className="image-import-tip">
-        新主流程：参考图仅作为辅助查看，优先通过批量粘贴流程文字或套用模板结构生成结构树，再一键应用到当前流程并导出 SVG / 高清 PNG / PPTX。
-      </p>
+      <p className="image-import-tip">上传流程图截图后，系统会尽量识别为可编辑文本。识别结果请人工校对后再生成流程图。</p>
 
       <div
         ref={dropZoneRef}
@@ -883,224 +881,77 @@ function ImageImportPanel({ onApply, onDetectedCaption, diagramType, projectConf
           onChange={handleFileChange}
           onClick={(event) => event.stopPropagation()}
         />
-        <strong>可选：上传、拖拽参考图到此处，或直接粘贴截图</strong>
-        <span>支持 PNG / JPG / JPEG / WEBP。图片用于对照查看，不再要求逐个框选 OCR。</span>
-        {file && <em>当前参考图：{file.name || '未命名截图'}</em>}
+        <strong>上传 / 粘贴 / 拖拽截图</strong>
+        <span>支持 PNG / JPG / JPEG / WEBP。点击区域选择文件，或将截图拖入 / 粘贴到此处。</span>
+        {file && <em>当前图片：{file.name || '未命名截图'}</em>}
       </div>
 
-      <div className="assist-tabs" role="tablist" aria-label="参考图辅助整理模式">
-        <button type="button" role="tab" aria-selected={activeAssistTab === 'batch'} className={activeAssistTab === 'batch' ? 'is-active' : ''} onClick={() => { setActiveAssistTab('batch'); setRecognitionMethod(IMPORT_METHODS.ASSIST) }}>批量粘贴整理</button>
-        <button type="button" role="tab" aria-selected={activeAssistTab === 'reference'} className={activeAssistTab === 'reference' ? 'is-active' : ''} onClick={() => { setActiveAssistTab('reference'); setRecognitionMethod(IMPORT_METHODS.ASSIST) }}>参考图查看</button>
-        <button type="button" role="tab" aria-selected={activeAssistTab === 'ocr'} className={activeAssistTab === 'ocr' ? 'is-active' : ''} onClick={() => { setActiveAssistTab('ocr'); setRecognitionMethod(IMPORT_METHODS.OCR) }}>高级 OCR</button>
-      </div>
-
-      <p className="pdf-import-tip">PDF 识别功能即将支持。当前建议先将 PDF 中的流程图截图后粘贴或上传。</p>
+      {previewUrl && renderReferenceViewer()}
 
       {status && (
         <div className="ocr-status" role="status">
           <span>{status}</span>
           {(isRecognizing || isAiRecognizing) && <strong>{progress}%</strong>}
-          {status === AI_QUOTA_FALLBACK_MESSAGE && <button type="button" className="primary" onClick={() => { setActiveAssistTab('batch'); setRecognitionMethod(IMPORT_METHODS.ASSIST) }}>切换到批量粘贴整理</button>}
         </div>
       )}
 
-      {activeAssistTab === 'batch' && (
-        <div className="batch-organize-layout">
-          <div className="batch-input-panel">
-            <label className="field-label">粘贴流程内容
-              <textarea
-                className="structured-editor assist-batch-text"
-                value={assistBatchText}
-                onChange={(event) => setAssistBatchText(event.target.value)}
-                placeholder={'可粘贴普通列表、带阶段文本、Markdown 结构化格式，或从 OCR / ChatGPT 复制来的混乱文本。\n例如：\n图5.6-1 项目整治技术路线图\n阶段一：项目整治技术路线\n* 消除上游污染源\n  * 洗金场堆存尾砂清挖运输'}
-              />
-            </label>
-            <div className="button-row compact assist-selection-actions">
-              <button type="button" className="primary" onClick={importBatchTextAsDraftNodes}>清洗文本并生成结构树</button>
-              <button type="button" onClick={() => setAssistBatchText('')} disabled={!assistBatchText.trim()}>清空粘贴内容</button>
-            </div>
+      <div className="button-row compact image-import-actions">
+        <button type="button" className="primary" onClick={() => handleRecognize(false)} disabled={!file || isRecognizing || isAiRecognizing}>开始识别</button>
+        <button type="button" onClick={() => handleRecognize(true)} disabled={!file || isRecognizing || isAiRecognizing}>重新识别</button>
+        <button type="button" onClick={handleApply} disabled={!resultText.trim() || isRecognizing || isAiRecognizing}>写入结构化内容</button>
+      </div>
 
-            <div className="template-structure-panel">
-              <strong>套用模板结构</strong>
-              <div className="template-structure-buttons">
-                {TEMPLATE_STRUCTURES.map((template) => (
-                  <button type="button" key={template.id} onClick={() => applyTemplateStructure(template)}>{template.name}</button>
-                ))}
-              </div>
-            </div>
-          </div>
+      <label className="field-label result-text-panel">
+        识别结果（请人工校对）
+        <textarea
+          className="structured-editor ocr-result-editor"
+          value={resultText}
+          onChange={(event) => setResultText(event.target.value)}
+          placeholder={'识别完成后会显示可编辑文本，例如：\n阶段一：项目整治技术路线\n* 消除上游污染源\n  * 洗金场堆存尾砂清挖运输'}
+        />
+      </label>
 
-          <div className="assist-draft-panel structure-tree-panel">
-            <div className="assist-draft-heading">
-              <strong>结构树编辑器</strong>
-              <span>{draftNodes.length} 项</span>
-            </div>
-            <div className="button-row compact structure-tree-toolbar">
-              <button type="button" onClick={() => addEmptyDraftNode(ASSIST_NODE_TYPES.STAGE)}>新增阶段</button>
-              <button type="button" onClick={() => addEmptyDraftNode(ASSIST_NODE_TYPES.NODE)}>新增节点</button>
-              <button type="button" onClick={() => addEmptyDraftNode(ASSIST_NODE_TYPES.CHILD)}>新增子节点</button>
-              <button type="button" onClick={() => addEmptyDraftNode(ASSIST_NODE_TYPES.CAPTION)}>新增图题</button>
-            </div>
-            <div className="assist-draft-list structure-tree-list">
-              {draftNodes.length ? draftNodes.map((node, index) => (
-                <article className={`assist-draft-item structure-tree-item type-${node.type}`} key={node.id}>
-                  <div className="structure-tree-type">{ASSIST_NODE_LABELS[node.type]}</div>
-                  <input value={node.text} onChange={(event) => updateDraftNode(node.id, { text: event.target.value })} aria-label={`${ASSIST_NODE_LABELS[node.type]}文字`} />
-                  <div className="assist-draft-actions structure-tree-actions">
-                    <button type="button" onClick={() => setStatus('可直接在文本框中编辑该结构树条目。')}>编辑</button>
-                    <button type="button" onClick={() => moveDraftNode(node.id, -1)} disabled={index === 0}>上移</button>
-                    <button type="button" onClick={() => moveDraftNode(node.id, 1)} disabled={index === draftNodes.length - 1}>下移</button>
-                    <button type="button" onClick={() => shiftDraftNodeLevel(node.id, -1)} disabled={node.type === ASSIST_NODE_TYPES.STAGE || node.type === ASSIST_NODE_TYPES.CAPTION}>提升层级</button>
-                    <button type="button" onClick={() => shiftDraftNodeLevel(node.id, 1)} disabled={node.type === ASSIST_NODE_TYPES.CHILD || node.type === ASSIST_NODE_TYPES.CAPTION}>降低层级</button>
-                    <button type="button" onClick={() => updateDraftNode(node.id, { type: ASSIST_NODE_TYPES.STAGE })}>设为阶段</button>
-                    <button type="button" onClick={() => updateDraftNode(node.id, { type: ASSIST_NODE_TYPES.NODE })}>设为节点</button>
-                    <button type="button" onClick={() => updateDraftNode(node.id, { type: ASSIST_NODE_TYPES.CHILD })}>设为子节点</button>
-                    <button type="button" onClick={() => updateDraftNode(node.id, { type: ASSIST_NODE_TYPES.CAPTION })}>设为图题</button>
-                    <button type="button" onClick={() => removeDraftNode(node.id)}>删除</button>
-                  </div>
-                </article>
-              )) : <p className="assist-empty-draft">结构树为空。请粘贴流程内容并清洗，或先套用一个模板结构。</p>}
-            </div>
-            <div className="button-row compact assist-apply-actions">
-              <button type="button" className="primary" onClick={generateAssistStructuredText}>生成结构化文本</button>
-              <button type="button" onClick={applyAssistStructuredText} disabled={!draftNodes.length && !resultText.trim()}>应用到当前流程</button>
-              <button type="button" onClick={() => { setDraftNodes([]); setStatus('已清空结构树。') }} disabled={!draftNodes.length}>清空结构树</button>
-            </div>
-          </div>
+      <details className="advanced-recognition-panel">
+        <summary>高级识别设置</summary>
+        <div className="ocr-mode-options ocr-method-inline">
+          <label><input type="radio" name="recognition-method" checked={recognitionMethod === IMPORT_METHODS.OCR} onChange={() => setRecognitionMethod(IMPORT_METHODS.OCR)} /> 本地 OCR</label>
+          <label><input type="radio" name="recognition-method" checked={recognitionMethod === IMPORT_METHODS.AI} onChange={() => setRecognitionMethod(IMPORT_METHODS.AI)} /> AI 识图</label>
         </div>
-      )}
-
-      {activeAssistTab === 'reference' && (
-        <div className="reference-only-layout">
-          {renderReferenceViewer()}
-          <div className="reference-helper-card">
-            <strong>参考图辅助整理说明</strong>
-            <p>请放大、平移或全屏查看参考图，同时切回“批量粘贴整理”手动整理结构树。此模式不要求检测流程框或逐个框选节点。</p>
-            <button type="button" className="primary" onClick={() => setActiveAssistTab('batch')}>去批量粘贴整理</button>
-          </div>
-        </div>
-      )}
-
-      {activeAssistTab === 'ocr' && (
-        <div className="advanced-ocr-tab">
-          <p className="image-import-tip">本地 OCR 对复杂中文流程图识别效果有限，建议优先使用批量粘贴整理或参考图辅助整理。</p>
-          <div className="ocr-mode-options ocr-method-inline">
-            <label><input type="radio" name="recognition-method" checked={recognitionMethod === IMPORT_METHODS.OCR} onChange={() => setRecognitionMethod(IMPORT_METHODS.OCR)} /> 本地 OCR</label>
-            <label><input type="radio" name="recognition-method" checked={recognitionMethod === IMPORT_METHODS.AI} onChange={() => setRecognitionMethod(IMPORT_METHODS.AI)} /> AI 识图</label>
-          </div>
-          {previewUrl && renderReferenceViewer({ allowSelection: recognitionMethod === IMPORT_METHODS.OCR })}
-
-          {recognitionMethod === IMPORT_METHODS.AI && (
-            <div className="button-row compact image-import-actions">
-              <button type="button" className="primary" onClick={handleAiRecognize} disabled={!file || isAiRecognizing || isRecognizing}>
-                {isAiRecognizing ? 'AI 识图中…' : 'AI 识图生成'}
-              </button>
-            </div>
-          )}
-
-          {recognitionMethod === IMPORT_METHODS.OCR && <div className="ocr-mode-panel" aria-label="本地 OCR 识别模式">
-            <strong>本地 OCR 识别模式</strong>
+        {recognitionMethod === IMPORT_METHODS.AI && (
+          <button type="button" className="primary" onClick={handleAiRecognize} disabled={!file || isAiRecognizing || isRecognizing}>AI 识图</button>
+        )}
+        {recognitionMethod === IMPORT_METHODS.OCR && (
+          <>
             <div className="ocr-mode-options">
               <label><input type="radio" name="ocr-mode" checked={recognitionMode === RECOGNITION_MODES.FULL} onChange={() => setRecognitionMode(RECOGNITION_MODES.FULL)} /> 整图识别</label>
               <label><input type="radio" name="ocr-mode" checked={recognitionMode === RECOGNITION_MODES.SEGMENTED} onChange={() => setRecognitionMode(RECOGNITION_MODES.SEGMENTED)} /> 自动分块识别</label>
               <label><input type="radio" name="ocr-mode" checked={recognitionMode === RECOGNITION_MODES.MANUAL} onChange={() => setRecognitionMode(RECOGNITION_MODES.MANUAL)} /> 手动框选识别</label>
             </div>
-            <div className="button-row compact image-import-actions">
-              <button type="button" onClick={() => handleRecognize(false)} disabled={!file || isRecognizing || isDetecting || isAiRecognizing}>本地 OCR 识别</button>
+            {renderReferenceViewer({ allowSelection: true })}
+            <div className="button-row compact">
               <button type="button" onClick={() => detectBoxes()} disabled={!file || isRecognizing || isDetecting || isAiRecognizing}>检测流程框</button>
-              <button type="button" onClick={() => handleRecognize(true)} disabled={!file || isRecognizing || isDetecting || isAiRecognizing}>重新 OCR</button>
               <button type="button" onClick={() => setManualSelection(null)} disabled={!manualSelection || isRecognizing}>清除选区</button>
             </div>
-          </div>}
-
-          {recognitionMethod === IMPORT_METHODS.OCR && <details className="ocr-raw-text-panel advanced-recognition-panel">
-            <summary>OCR 前处理选项</summary>
-            <div className="ocr-preprocess-panel" aria-label="OCR 前处理选项">
-              <strong>OCR 前处理选项</strong>
-              <div className="ocr-preprocess-options">
-                <label><input type="checkbox" checked={preprocessOptions.enhanceContrast && !preprocessOptions.useOriginal} onChange={updatePreprocessOption('enhanceContrast')} disabled={preprocessOptions.useOriginal} /> 自动增强对比度</label>
-                <label><input type="checkbox" checked={preprocessOptions.grayscale && !preprocessOptions.useOriginal} onChange={updatePreprocessOption('grayscale')} disabled={preprocessOptions.useOriginal} /> 灰度化</label>
-                <label><input type="checkbox" checked={preprocessOptions.autoCrop && !preprocessOptions.useOriginal} onChange={updatePreprocessOption('autoCrop')} disabled={preprocessOptions.useOriginal} /> 自动裁剪空白边</label>
-                <label><input type="checkbox" checked={preprocessOptions.upscale && !preprocessOptions.useOriginal} onChange={updatePreprocessOption('upscale')} disabled={preprocessOptions.useOriginal} /> 放大后识别</label>
-                <label><input type="checkbox" checked={preprocessOptions.useOriginal} onChange={updatePreprocessOption('useOriginal')} /> 使用原图识别</label>
-              </div>
+            <div className="ocr-preprocess-options">
+              <label><input type="checkbox" checked={preprocessOptions.enhanceContrast && !preprocessOptions.useOriginal} onChange={updatePreprocessOption('enhanceContrast')} disabled={preprocessOptions.useOriginal} /> 自动增强对比度</label>
+              <label><input type="checkbox" checked={preprocessOptions.grayscale && !preprocessOptions.useOriginal} onChange={updatePreprocessOption('grayscale')} disabled={preprocessOptions.useOriginal} /> 灰度化</label>
+              <label><input type="checkbox" checked={preprocessOptions.autoCrop && !preprocessOptions.useOriginal} onChange={updatePreprocessOption('autoCrop')} disabled={preprocessOptions.useOriginal} /> 自动裁剪空白边</label>
+              <label><input type="checkbox" checked={preprocessOptions.upscale && !preprocessOptions.useOriginal} onChange={updatePreprocessOption('upscale')} disabled={preprocessOptions.useOriginal} /> 放大后识别</label>
+              <label><input type="checkbox" checked={preprocessOptions.useOriginal} onChange={updatePreprocessOption('useOriginal')} /> 使用原图识别</label>
             </div>
-          </details>}
-
-          <div className="button-row compact image-import-actions">
-            <button type="button" onClick={handleApply} disabled={!resultText.trim() || isRecognizing || isAiRecognizing}>应用到当前流程</button>
-            <button type="button" onClick={handleRemoveImage} disabled={!file || isRecognizing || isAiRecognizing}>移除当前图片</button>
-          </div>
-        </div>
-      )}
-
-      <label className="field-label result-text-panel">
-        结构化文本结果
-        <textarea
-          className="structured-editor ocr-result-editor"
-          value={resultText}
-          onChange={(event) => setResultText(event.target.value)}
-          placeholder={'点击“生成结构化文本”后会填入这里，例如：\n阶段一：项目整治技术路线\n\n* 消除上游污染源\n\n  * 洗金场堆存尾砂清挖运输'}
-        />
-      </label>
-
-      {preprocessNotes.length > 0 && (
-        <div className="preprocess-note-list">
-          {preprocessNotes.map((note) => <span key={note}>{note}</span>)}
-        </div>
-      )}
+          </>
+        )}
+      </details>
 
       {(aiResult || rawOcrText.trim() || segmentDetails.length > 0 || detectedBoxes.length > 0 || recognizedLineCount > 0 || qualityHint) && (
         <details className="ocr-raw-text-panel debug-ocr-panel">
           <summary>调试信息</summary>
           <div className="ocr-debug-summary">
-            <span>当前识别方式：{recognitionMethod === IMPORT_METHODS.AI ? 'AI 识图' : recognitionMode === RECOGNITION_MODES.FULL ? '本地 OCR / 整图识别' : recognitionMode === RECOGNITION_MODES.SEGMENTED ? '本地 OCR / 自动分块识别' : '本地 OCR / 手动框选识别'}</span>
             <span>识别框数量：{detectedBoxes.length}</span>
-            <span>识别节点数量：{recognizedLineCount}</span>
+            <span>已识别节点数量：{recognizedLineCount}</span>
             {qualityHint && <span className="quality-hint">识别质量提示：{qualityHint}</span>}
           </div>
-
-          {aiResult && (
-            <div className="ai-result-panel">
-              <strong>AI 识图结果</strong>
-              <div className="ai-result-grid">
-                <span>图号：{aiResult.figureNumber || '未识别'}</span>
-                <span>图题：{aiResult.figureTitle || '未识别'}</span>
-                <span>图类型：{aiResult.diagramKind || '普通流程图'}</span>
-                <span>模板：{aiResult.templateType || 'basic'}</span>
-              </div>
-              {aiWarnings.length > 0 && (
-                <ul className="ai-warning-list">
-                  {aiWarnings.map((warning) => <li key={warning}>{warning}</li>)}
-                </ul>
-              )}
-            </div>
-          )}
-
-          {rawOcrText.trim() && (
-            <div className="raw-ocr-block">
-              <strong>查看原始 OCR 文本</strong>
-              <textarea className="structured-editor ocr-raw-text" value={rawOcrText} readOnly aria-label="OCR 原始文本" />
-              <span>原始文本仅用于核对，不会自动应用到当前流程。</span>
-            </div>
-          )}
-
-          {segmentDetails.length > 0 && (
-            <div className="segmented-detail-panel">
-              <strong>查看分块识别详情</strong>
-              <div className="segmented-detail-list">
-                {segmentDetails.map((detail) => (
-                  <article key={detail.index}>
-                    <strong>第 {detail.index} 个框（{detail.type || 'node'}）</strong>
-                    <span>位置：x={detail.box.x}, y={detail.box.y}, w={detail.box.width}, h={detail.box.height}</span>
-                    {detail.error && <em>错误：{detail.error}</em>}
-                    <label>原始 OCR 文本<textarea className="structured-editor ocr-raw-text" value={detail.rawText || ''} readOnly /></label>
-                    <label>清洗后文本<textarea className="structured-editor ocr-raw-text" value={detail.cleanText || ''} readOnly /></label>
-                  </article>
-                ))}
-              </div>
-            </div>
-          )}
+          {rawOcrText.trim() && <textarea className="structured-editor ocr-raw-text" value={rawOcrText} readOnly aria-label="OCR 原始文本" />}
         </details>
       )}
     </section>

@@ -33,6 +33,24 @@ export function createDefaultStructuredText(templateType = 'technical-service') 
     return ['阶段一：资料收集与踏勘工作', ...labels.map((label) => `* ${label}`)].join('\n')
   }
 
+  if (templateType === 'remediation-route') {
+    return [
+      '图题：图5.6-1 项目整治技术路线图',
+      '阶段一：项目整治技术路线',
+      '* 消除上游污染源',
+      '  * 洗金场堆存尾砂清挖运输',
+      '  * 水泥窑协同处置',
+      '* 河道污染底泥处置',
+      '  * 清淤',
+      '  * 清表',
+      '  * 围堰导流'
+    ].join('\n')
+  }
+
+  if (templateType === 'basic') {
+    return ['阶段一：普通流程图', '* 启动', '* 准备', '* 实施', '* 检查', '* 提交成果'].join('\n')
+  }
+
   if (templateType === 'project-org' || templateType === 'organization') {
     const supportDepartments = ORGANIZATION_REPORT_LAYOUT.nodes.filter((node) => node.id.startsWith('support-')).map((node) => node.label)
     const fieldTasks = ORGANIZATION_REPORT_LAYOUT.nodes.filter((node) => node.id.startsWith('field-task-')).map((node) => node.label)
